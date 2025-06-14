@@ -1,13 +1,17 @@
-name: image_painter
-description: A flutter package for drawing over images. Supports color,
-  strokeWidth, different paintModes and exporting image.
-version: 0.7.1
-homepage: https://github.com/yellowQ-software/yellowQ-Flutter-Image-Painter
+name: enhanced_image_painter
+description: A comprehensive Flutter package for drawing, annotating, and editing images with advanced features including customizable backgrounds, export functionality, and FlutterFlow integration.
+version: 1.0.0
+homepage: https://github.com/djcnnrs/Flutter-Image-Painter
 
 environment:
-  sdk: ">=2.15.0 <4.0.0"
-  flutter: ">=1.17.0"
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
 
 dependencies:
   flutter:
     sdk: flutter
+  
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0

@@ -1,16 +1,44 @@
-# image_painter_example
+# Enhanced Image Painter Example
 
-A new Flutter project.
+This example demonstrates the basic usage of the Enhanced Image Painter package.
 
-## Getting Started
+## Features Demonstrated
 
-This project is a starting point for a Flutter application.
+- Drawing with different brush sizes and colors
+- Text annotations
+- Shape drawing (rectangle, circle, line, arrow)
+- Multiple background types (graph paper, lined notebook, blank canvas, network image)
+- Undo/Redo functionality
+- Clear canvas
+- Save functionality
 
-A few resources to get you started if this is your first Flutter project:
+## Running the Example
 
-- [Lab: Write your first Flutter app](https://flutter.dev/docs/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://flutter.dev/docs/cookbook)
+1. Ensure Flutter is installed on your system
+2. Navigate to the example directory:
+   ```bash
+   cd example
+   ```
+3. Install dependencies:
+   ```bash
+   flutter pub get
+   ```
+4. Run the example:
+   ```bash
+   flutter run
+   ```
 
-For help getting started with Flutter, view our
-[online documentation](https://flutter.dev/docs), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Code Structure
+
+- `lib/main.dart` - Main application entry point with a simple painter demonstration
+- `assets/sample.png` - Sample image for testing
+
+## Usage
+
+The example shows a basic implementation of the Enhanced Image Painter widget with:
+- Full-screen painter canvas
+- Built-in controls and toolbar
+- Graph paper background
+- Save functionality with success notification
+
+This serves as a starting point for integrating the Enhanced Image Painter into your own Flutter applications.
