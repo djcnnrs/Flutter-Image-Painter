@@ -34,6 +34,7 @@ class ImagePainter extends StatefulWidget {
     this.clearAllIcon,
     this.colorIcon,
     this.undoIcon,
+    this.saveIcon,
     this.isSignature = false,
     this.controlsAtTop = true,
     this.signatureBackgroundColor = Colors.white,
@@ -49,6 +50,7 @@ class ImagePainter extends StatefulWidget {
     this.optionColor,
     this.onUndo,
     this.onClear,
+    this.onSave,
   }) : super(key: key);
 
   ///Constructor for loading image from network url.
@@ -65,6 +67,7 @@ class ImagePainter extends StatefulWidget {
     Widget? undoIcon,
     Widget? clearAllIcon,
     Widget? colorIcon,
+    Widget? saveIcon,
     ValueChanged<PaintMode>? onPaintModeChanged,
     ValueChanged<Color>? onColorChanged,
     ValueChanged<double>? onStrokeWidthChanged,
@@ -77,6 +80,7 @@ class ImagePainter extends StatefulWidget {
     Color? optionColor,
     VoidCallback? onUndo,
     VoidCallback? onClear,
+    VoidCallback? onSave,
   }) {
     return ImagePainter._(
       key: key,
@@ -91,6 +95,7 @@ class ImagePainter extends StatefulWidget {
       undoIcon: undoIcon,
       colorIcon: colorIcon,
       clearAllIcon: clearAllIcon,
+      saveIcon: saveIcon,
       onPaintModeChanged: onPaintModeChanged,
       onColorChanged: onColorChanged,
       onStrokeWidthChanged: onStrokeWidthChanged,
@@ -103,6 +108,7 @@ class ImagePainter extends StatefulWidget {
       optionColor: optionColor,
       onUndo: onUndo,
       onClear: onClear,
+      onSave: onSave,
     );
   }
 
@@ -120,6 +126,7 @@ class ImagePainter extends StatefulWidget {
     Widget? undoIcon,
     Widget? clearAllIcon,
     Widget? colorIcon,
+    Widget? saveIcon,
     ValueChanged<PaintMode>? onPaintModeChanged,
     ValueChanged<Color>? onColorChanged,
     ValueChanged<double>? onStrokeWidthChanged,
@@ -132,6 +139,7 @@ class ImagePainter extends StatefulWidget {
     Color? optionColor,
     VoidCallback? onUndo,
     VoidCallback? onClear,
+    VoidCallback? onSave,
   }) {
     return ImagePainter._(
       controller: controller,
@@ -146,6 +154,7 @@ class ImagePainter extends StatefulWidget {
       undoIcon: undoIcon,
       colorIcon: colorIcon,
       clearAllIcon: clearAllIcon,
+      saveIcon: saveIcon,
       onPaintModeChanged: onPaintModeChanged,
       onColorChanged: onColorChanged,
       onStrokeWidthChanged: onStrokeWidthChanged,
@@ -158,6 +167,7 @@ class ImagePainter extends StatefulWidget {
       optionColor: optionColor,
       onUndo: onUndo,
       onClear: onClear,
+      onSave: onSave,
     );
   }
 
@@ -324,6 +334,74 @@ class ImagePainter extends StatefulWidget {
     );
   }
 
+  ///Constructor for creating with background support.
+  factory ImagePainter.withBackground({
+    required ImagePainterController controller,
+    required BackgroundType backgroundType,
+    String? backgroundImageUrl,
+    Color backgroundColor = Colors.white,
+    Key? key,
+    double? height,
+    double? width,
+    bool? scalable,
+    Widget? placeholderWidget,
+    List<Color>? colors,
+    Widget? brushIcon,
+    Widget? undoIcon,
+    Widget? clearAllIcon,
+    Widget? colorIcon,
+    Widget? saveIcon,
+    ValueChanged<PaintMode>? onPaintModeChanged,
+    ValueChanged<Color>? onColorChanged,
+    ValueChanged<double>? onStrokeWidthChanged,
+    TextDelegate? textDelegate,
+    bool? controlsAtTop,
+    bool? showControls,
+    Color? controlsBackgroundColor,
+    Color? selectedColor,
+    Color? unselectedColor,
+    Color? optionColor,
+    VoidCallback? onUndo,
+    VoidCallback? onClear,
+    VoidCallback? onSave,
+  }) {
+    // Set background in controller
+    controller.setBackground(
+      type: backgroundType,
+      imageUrl: backgroundImageUrl,
+      color: backgroundColor,
+    );
+
+    return ImagePainter._(
+      controller: controller,
+      key: key,
+      height: height,
+      width: width,
+      isScalable: scalable ?? false,
+      placeHolder: placeholderWidget,
+      colors: colors,
+      brushIcon: brushIcon,
+      undoIcon: undoIcon,
+      colorIcon: colorIcon,
+      clearAllIcon: clearAllIcon,
+      saveIcon: saveIcon,
+      onPaintModeChanged: onPaintModeChanged,
+      onColorChanged: onColorChanged,
+      onStrokeWidthChanged: onStrokeWidthChanged,
+      textDelegate: textDelegate,
+      controlsAtTop: controlsAtTop ?? true,
+      showControls: showControls ?? true,
+      controlsBackgroundColor: controlsBackgroundColor,
+      optionSelectedColor: selectedColor,
+      optionUnselectedColor: unselectedColor,
+      optionColor: optionColor,
+      onUndo: onUndo,
+      onClear: onClear,
+      onSave: onSave,
+      networkUrl: backgroundType == BackgroundType.networkImage ? backgroundImageUrl : null,
+    );
+  }
+
   /// Class that holds the controller and it's methods.
   final ImagePainterController controller;
 
@@ -373,6 +451,9 @@ class ImagePainter extends StatefulWidget {
   ///Widget for clearing all actions on control bar.
   final Widget? clearAllIcon;
 
+  ///Widget for saving all actions on control bar.
+  final Widget? saveIcon;
+
   ///Define where the controls is located.
   ///`true` represents top.
   final bool controlsAtTop;
@@ -400,6 +481,8 @@ class ImagePainter extends StatefulWidget {
   final VoidCallback? onUndo;
 
   final VoidCallback? onClear;
+
+  final VoidCallback? onSave;
 
   @override
   ImagePainterState createState() => ImagePainterState();
@@ -450,7 +533,21 @@ class ImagePainterState extends State<ImagePainter> {
 
   ///Converts the incoming image type from constructor to [ui.Image]
   Future<void> _resolveAndConvertImage() async {
-    if (widget.networkUrl != null) {
+    // Handle background image if controller specifies network image background
+    if (_controller.backgroundType == BackgroundType.networkImage && 
+        _controller.backgroundImageUrl != null) {
+      try {
+        _image = await _loadNetworkImage(_controller.backgroundImageUrl!);
+        if (_image != null) {
+          _controller.setImage(_image!);
+          _setStrokeMultiplier();
+        }
+      } catch (e) {
+        // Fallback to white background if network image fails
+        _controller.setBackground(type: BackgroundType.blankCanvas, color: Colors.white);
+        _isLoaded.value = true;
+      }
+    } else if (widget.networkUrl != null) {
       _image = await _loadNetworkImage(widget.networkUrl!);
       if (_image != null) {
         _controller.setImage(_image!);
@@ -707,12 +804,13 @@ class ImagePainterState extends State<ImagePainter> {
       );
 
   PopupMenuItem _showOptionsRow() {
+    final toolbarConfig = _controller.toolbarConfig;
     return PopupMenuItem(
       enabled: false,
       child: Center(
         child: SizedBox(
           child: Wrap(
-            children: paintModes(textDelegate)
+            children: paintModes(textDelegate, toolbarConfig)
                 .map(
                   (item) => SelectionItems(
                     data: item,
@@ -822,15 +920,16 @@ class ImagePainterState extends State<ImagePainter> {
   }
 
   Widget _buildControls() {
+    final toolbarConfig = _controller.toolbarConfig;
     return Container(
       padding: const EdgeInsets.all(4),
       color: widget.controlsBackgroundColor ?? Colors.grey[200],
       child: Row(
         children: [
-          AnimatedBuilder(
+          if (toolbarConfig.showBrushTool) AnimatedBuilder(
             animation: _controller,
             builder: (_, __) {
-              final icon = paintModes(textDelegate)
+              final icon = paintModes(textDelegate, toolbarConfig)
                   .firstWhere((item) => item.mode == _controller.mode)
                   .icon;
               return PopupMenuButton(
@@ -844,7 +943,7 @@ class ImagePainterState extends State<ImagePainter> {
               );
             },
           ),
-          AnimatedBuilder(
+          if (toolbarConfig.showColorTool) AnimatedBuilder(
             animation: _controller,
             builder: (_, __) {
               return PopupMenuButton(
@@ -869,7 +968,7 @@ class ImagePainterState extends State<ImagePainter> {
               );
             },
           ),
-          PopupMenuButton(
+          if (toolbarConfig.showStrokeTool) PopupMenuButton(
             tooltip: textDelegate.changeBrushSize,
             surfaceTintColor: Colors.transparent,
             shape: ContinuousRectangleBorder(
@@ -903,7 +1002,7 @@ class ImagePainterState extends State<ImagePainter> {
             },
           ),
           const Spacer(),
-          IconButton(
+          if (toolbarConfig.showUndoTool) IconButton(
             tooltip: textDelegate.undo,
             icon: widget.undoIcon ?? Icon(Icons.reply, color: Colors.grey[700]),
             onPressed: () {
@@ -911,13 +1010,21 @@ class ImagePainterState extends State<ImagePainter> {
               _controller.undo();
             },
           ),
-          IconButton(
+          if (toolbarConfig.showClearTool) IconButton(
             tooltip: textDelegate.clearAllProgress,
             icon: widget.clearAllIcon ??
                 Icon(Icons.clear, color: Colors.grey[700]),
             onPressed: () {
               widget.onClear?.call();
               _controller.clear();
+            },
+          ),
+          if (toolbarConfig.showSaveTool && (_controller.onSave != null || widget.onSave != null)) IconButton(
+            tooltip: 'Save',
+            icon: widget.saveIcon ?? Icon(Icons.save, color: Colors.grey[700]),
+            onPressed: () {
+              widget.onSave?.call();
+              _controller.onSave?.call();
             },
           ),
         ],

@@ -6,6 +6,38 @@ import 'package:flutter/material.dart';
 import '../image_painter.dart';
 import '_signature_painter.dart';
 
+// Enum for background types
+enum BackgroundType {
+  graphPaper,
+  linedNotebook,
+  blankCanvas,
+  networkImage,
+  none
+}
+
+// Toolbar configuration class
+class ToolbarConfig {
+  final bool showBrushTool;
+  final bool showColorTool;
+  final bool showStrokeTool;
+  final bool showTextTool;
+  final bool showShapesTools;
+  final bool showUndoTool;
+  final bool showClearTool;
+  final bool showSaveTool;
+  
+  const ToolbarConfig({
+    this.showBrushTool = true,
+    this.showColorTool = true,
+    this.showStrokeTool = true,
+    this.showTextTool = true,
+    this.showShapesTools = true,
+    this.showUndoTool = true,
+    this.showClearTool = true,
+    this.showSaveTool = false,
+  });
+}
+
 class ImagePainterController extends ChangeNotifier {
   late double _strokeWidth;
   late Color _color;
@@ -14,6 +46,17 @@ class ImagePainterController extends ChangeNotifier {
   late bool _fill;
   late ui.Image? _image;
   Rect _rect = Rect.zero;
+
+  // Background properties
+  BackgroundType _backgroundType = BackgroundType.none;
+  String? _backgroundImageUrl;
+  Color _backgroundColor = Colors.white;
+  
+  // Toolbar configuration
+  ToolbarConfig _toolbarConfig = const ToolbarConfig();
+  
+  // Custom save callback
+  VoidCallback? _onSave;
 
   final List<Offset?> _offsets = [];
 
@@ -26,6 +69,11 @@ class ImagePainterController extends ChangeNotifier {
   bool _isSignature = false;
 
   ui.Image? get image => _image;
+  BackgroundType get backgroundType => _backgroundType;
+  String? get backgroundImageUrl => _backgroundImageUrl;
+  Color get backgroundColor => _backgroundColor;
+  ToolbarConfig get toolbarConfig => _toolbarConfig;
+  VoidCallback? get onSave => _onSave;
 
   Paint get brush => Paint()
     ..color = _color
@@ -64,12 +112,22 @@ class ImagePainterController extends ChangeNotifier {
     PaintMode mode = PaintMode.freeStyle,
     String text = '',
     bool fill = false,
+    BackgroundType backgroundType = BackgroundType.none,
+    String? backgroundImageUrl,
+    Color backgroundColor = Colors.white,
+    ToolbarConfig? toolbarConfig,
+    VoidCallback? onSave,
   }) {
     _strokeWidth = strokeWidth;
     _color = color;
     _mode = mode;
     _text = text;
     _fill = fill;
+    _backgroundType = backgroundType;
+    _backgroundImageUrl = backgroundImageUrl;
+    _backgroundColor = backgroundColor;
+    _toolbarConfig = toolbarConfig ?? const ToolbarConfig();
+    _onSave = onSave;
   }
 
   void setImage(ui.Image image) {
@@ -150,6 +208,10 @@ class ImagePainterController extends ChangeNotifier {
     PaintMode? mode,
     String? text,
     int? strokeMultiplier,
+    BackgroundType? backgroundType,
+    String? backgroundImageUrl,
+    Color? backgroundColor,
+    ToolbarConfig? toolbarConfig,
   }) {
     _strokeWidth = strokeWidth ?? _strokeWidth;
     _color = color ?? _color;
@@ -157,11 +219,36 @@ class ImagePainterController extends ChangeNotifier {
     _mode = mode ?? _mode;
     _text = text ?? _text;
     _strokeMultiplier = strokeMultiplier ?? _strokeMultiplier;
+    _backgroundType = backgroundType ?? _backgroundType;
+    _backgroundImageUrl = backgroundImageUrl ?? _backgroundImageUrl;
+    _backgroundColor = backgroundColor ?? _backgroundColor;
+    _toolbarConfig = toolbarConfig ?? _toolbarConfig;
     notifyListeners();
   }
 
   void setInProgress(bool val) {
     _paintInProgress = val;
+    notifyListeners();
+  }
+
+  void setBackground({
+    BackgroundType? type,
+    String? imageUrl,
+    Color? color,
+  }) {
+    _backgroundType = type ?? _backgroundType;
+    _backgroundImageUrl = imageUrl;
+    _backgroundColor = color ?? _backgroundColor;
+    notifyListeners();
+  }
+  
+  void setToolbarConfig(ToolbarConfig config) {
+    _toolbarConfig = config;
+    notifyListeners();
+  }
+  
+  void setSaveCallback(VoidCallback? callback) {
+    _onSave = callback;
     notifyListeners();
   }
 
@@ -179,7 +266,15 @@ class ImagePainterController extends ChangeNotifier {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final painter = DrawImage(controller: this);
-    final size = Size(_image!.width.toDouble(), _image!.height.toDouble());
+    Size size;
+    
+    if (_image != null) {
+      size = Size(_image!.width.toDouble(), _image!.height.toDouble());
+    } else {
+      // Use a default size for background-only images
+      size = const Size(800, 600);
+    }
+    
     painter.paint(canvas, size);
     final _convertedImage = await recorder
         .endRecording()

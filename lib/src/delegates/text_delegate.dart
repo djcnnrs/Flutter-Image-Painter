@@ -5,7 +5,7 @@ class TextDelegate {
   final String drawing = "Drawing";
   final String circle = "Circle";
   final String arrow = "Arrow";
-  final String dashLine = "Dash line";
+  final String dashLine = "Dashed Line";
   final String text = "Text";
   final String changeMode = "Change Mode";
   final String changeColor = "Change Color";
@@ -14,4 +14,5 @@ class TextDelegate {
   final String done = "Done";
   final String clearAllProgress = "Clear All Progress";
   final String fill = "Fill";
+  final String save = "Save";
 }

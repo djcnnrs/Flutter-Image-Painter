@@ -22,16 +22,21 @@ class DrawImage extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Draw background first
+    _drawBackground(canvas, size);
+
     ///paints [ui.Image] on the canvas for reference to draw over it.
-    paintImage(
-      canvas: canvas,
-      image: _controller.image!,
-      filterQuality: FilterQuality.high,
-      rect: Rect.fromPoints(
-        const Offset(0, 0),
-        Offset(size.width, size.height),
-      ),
-    );
+    if (_controller.image != null) {
+      paintImage(
+        canvas: canvas,
+        image: _controller.image!,
+        filterQuality: FilterQuality.high,
+        rect: Rect.fromPoints(
+          const Offset(0, 0),
+          Offset(size.width, size.height),
+        ),
+      );
+    }
 
     ///paints all the previoud paintInfo history recorded on [PaintHistory]
     for (final item in _controller.paintHistory) {
@@ -192,6 +197,81 @@ class DrawImage extends CustomPainter {
   @override
   bool shouldRepaint(DrawImage oldInfo) {
     return oldInfo._controller != _controller;
+  }
+
+  void _drawBackground(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+
+    switch (_controller.backgroundType) {
+      case BackgroundType.blankCanvas:
+        canvas.drawRect(rect, Paint()..color = _controller.backgroundColor);
+        break;
+      case BackgroundType.graphPaper:
+        _drawGraphPaper(canvas, size);
+        break;
+      case BackgroundType.linedNotebook:
+        _drawLinedNotebook(canvas, size);
+        break;
+      case BackgroundType.networkImage:
+        // Network images should be handled at widget level
+        canvas.drawRect(rect, Paint()..color = _controller.backgroundColor);
+        break;
+      case BackgroundType.none:
+        break;
+    }
+  }
+
+  void _drawGraphPaper(Canvas canvas, Size size) {
+    // Draw white background
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Paint()..color = Colors.white,
+    );
+
+    final paint = Paint()
+      ..color = Colors.grey.withOpacity(0.3)
+      ..strokeWidth = 1;
+
+    const gridSize = 20.0;
+
+    // Draw vertical lines
+    for (double x = 0; x <= size.width; x += gridSize) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+
+    // Draw horizontal lines
+    for (double y = 0; y <= size.height; y += gridSize) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  void _drawLinedNotebook(Canvas canvas, Size size) {
+    // Draw white background
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Paint()..color = Colors.white,
+    );
+
+    final paint = Paint()
+      ..color = Colors.blue.withOpacity(0.3)
+      ..strokeWidth = 1;
+
+    const lineSpacing = 30.0;
+
+    // Draw horizontal lines
+    for (double y = lineSpacing; y <= size.height; y += lineSpacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+
+    // Draw left margin line
+    final marginPaint = Paint()
+      ..color = Colors.red.withOpacity(0.4)
+      ..strokeWidth = 2;
+    canvas.drawLine(
+      Offset(40, 0),
+      Offset(40, size.height),
+      marginPaint,
+    );
   }
 }
 
