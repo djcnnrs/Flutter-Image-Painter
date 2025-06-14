@@ -330,44 +330,75 @@ void undoPaintAction() {
 }
 ```
 
-## 📝 Quick Summary: Widget State Reference
+## 🚨 FlutterFlow "Unable to process return parameter" Fix
 
-### The Answer: Use Static Methods with Global Key
+### The Problem:
+FlutterFlow has restrictions on custom action return types. Some types like `Uint8List?` are not supported.
 
-**The simplest and most reliable way to reference your widget state in FlutterFlow is:**
+### ✅ Solutions:
 
-1. **Use the global key approach** (already implemented in the templates above)
-2. **Call static methods** from your FlutterFlow actions
-3. **No parameters needed** - the widget manages its own state
-
-### ✅ Exact Steps:
-
-1. **Copy** `flutterflow_widget_template.dart` → FlutterFlow Custom Widget
-2. **Copy** action code from `flutterflow_actions_template.dart` → FlutterFlow Custom Actions  
-3. **Call actions** from buttons: `exportPaintedImage()`, `clearPaintedCanvas()`, `undoPaintAction()`
-
-### 🎯 In Your FlutterFlow Actions:
-
+#### Option 1: Use FlutterFlow-Compatible Return Types
 ```dart
-// ✅ CORRECT - No widget reference needed
-Future<Uint8List?> exportPaintedImage() async {
-  return await ImagePainterWidget.exportCurrentImage();
+// ✅ WORKS - FlutterFlow supports List<int>
+Future<List<int>?> exportPaintedImage() async {
+  final imageBytes = await ImagePainterWidget.exportCurrentImage();
+  return imageBytes?.toList(); // Convert Uint8List to List<int>
 }
 
-// ❌ WRONG - Don't try to get widget reference manually
-Future<Uint8List?> exportPaintedImage() async {
-  final painterState = // This is what you were asking about - YOU DON'T NEED THIS
-  // ...
+// ✅ WORKS - FlutterFlow supports bool
+Future<bool> clearPaintedCanvas() async {
+  try {
+    ImagePainterWidget.clearCurrentCanvas();
+    return true; // Success
+  } catch (e) {
+    return false; // Failed
+  }
 }
 ```
 
-### 🔧 The Magic Behind It:
+#### Option 2: Use Void Actions + App State
+```dart
+// ✅ WORKS - No return type issues
+Future<void> exportPaintedImageSimple() async {
+  final imageBytes = await ImagePainterWidget.exportCurrentImage();
+  if (imageBytes != null) {
+    // Store in FlutterFlow app state
+    FFAppState().lastExportedImage = imageBytes.toList();
+    FFAppState().exportSuccess = true;
+  } else {
+    FFAppState().exportSuccess = false;
+  }
+}
+```
 
-- **Global Key**: `ImagePainterWidget.globalKey` gives global access to the widget
-- **Static Methods**: Can be called from anywhere without widget reference
-- **Automatic Registration**: Widget registers itself when created
+### 🎯 Recommended FlutterFlow Return Types:
 
-**You don't need to manually get widget references - the templates handle everything!** 🎉
+| ✅ Supported | ❌ Not Supported |
+|-------------|------------------|
+| `Future<void>` | `Future<Uint8List?>` |
+| `Future<bool>` | `Future<Uint8List>` |
+| `Future<String?>` | Complex objects |
+| `Future<List<int>?>` | Custom classes |
+| `Future<int>` | `Future<dynamic>` |
+| `Future<double>` | Nullable complex types |
+
+### 🔧 How to Handle Image Data:
+
+```dart
+// In your action:
+Future<List<int>?> exportImage() async {
+  final bytes = await ImagePainterWidget.exportCurrentImage();
+  return bytes?.toList(); // Convert to List<int>
+}
+
+// In your FlutterFlow logic:
+final imageData = await exportImage();
+if (imageData != null) {
+  // Convert back to Uint8List when needed
+  final uint8List = Uint8List.fromList(imageData);
+  // Now upload to Firebase, save to gallery, etc.
+}
+```
 
 ## 🎯 Practical FlutterFlow Setup Example
 
