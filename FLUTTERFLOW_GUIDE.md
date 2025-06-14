@@ -163,27 +163,309 @@ backgroundImageUrl: 'https://example.com/background.jpg'
 
 ## 🛠️ FlutterFlow Actions
 
-### Export Image Action
+## 🔑 Widget State Reference in FlutterFlow
 
-Create a custom action in FlutterFlow:
+### Method 1: Using Widget Reference Parameter (Recommended)
+
+In FlutterFlow, when you create a custom action, you can pass your widget as a parameter:
+
+#### Step 1: Create Custom Action with Widget Parameter
 
 ```dart
 import 'dart:typed_data';
 
-Future<Uint8List?> exportPaintedImage() async {
-  // Get reference to your Image Painter widget
-  final painterState = // Reference to your widget state
-  
+// Custom Action: Export Image
+// Parameters: 
+// - widgetReference (Widget) - Reference to your ImagePainter widget
+Future<Uint8List?> exportPaintedImage(dynamic widgetReference) async {
   try {
-    final imageBytes = await painterState.exportImage();
+    // Cast the widget reference to access the state
+    if (widgetReference is GlobalKey<ImagePainterState>) {
+      final imageBytes = await widgetReference.currentState?.exportImage();
+      return imageBytes;
+    }
+    
+    // Alternative: If widgetReference is the state directly
+    if (widgetReference is ImagePainterState) {
+      final imageBytes = await widgetReference.exportImage();
+      return imageBytes;
+    }
+  } catch (e) {
+    print('Export failed: $e');
+  }
+  
+  return null;
+}
+
+// Custom Action: Clear Canvas
+// Parameters:
+// - widgetReference (Widget) - Reference to your ImagePainter widget
+void clearPaintedCanvas(dynamic widgetReference) {
+  try {
+    if (widgetReference is GlobalKey<ImagePainterState>) {
+      widgetReference.currentState?.clearCanvas();
+    } else if (widgetReference is ImagePainterState) {
+      widgetReference.clearCanvas();
+    }
+  } catch (e) {
+    print('Clear failed: $e');
+  }
+}
+
+// Custom Action: Undo Last Action
+// Parameters:
+// - widgetReference (Widget) - Reference to your ImagePainter widget
+void undoPaintAction(dynamic widgetReference) {
+  try {
+    if (widgetReference is GlobalKey<ImagePainterState>) {
+      widgetReference.currentState?.undoLastAction();
+    } else if (widgetReference is ImagePainterState) {
+      widgetReference.undoLastAction();
+    }
+  } catch (e) {
+    print('Undo failed: $e');
+  }
+}
+```
+
+#### Step 2: Pass Widget Reference from FlutterFlow
+
+When calling the action in FlutterFlow:
+1. **Create the action**
+2. **Add parameter**: `widgetReference` of type `Widget`
+3. **When calling the action**: Pass your ImagePainter widget reference
+
+### Method 2: Using Global Key (More Reliable)
+
+This method requires modifying your custom widget to expose a global key:
+
+```dart
+// Modified ImagePainter widget for FlutterFlow
+class ImagePainter extends StatefulWidget {
+  // ...existing parameters...
+  
+  // Add this static key that can be accessed globally
+  static final GlobalKey<ImagePainterState> globalKey = GlobalKey<ImagePainterState>();
+  
+  const ImagePainter({
+    // ...existing parameters...
+  }) : super(key: globalKey); // Use the global key
+  
+  // ...rest of widget code...
+}
+
+// Then in your custom actions:
+Future<Uint8List?> exportPaintedImage() async {
+  try {
+    final imageBytes = await ImagePainter.globalKey.currentState?.exportImage();
+    return imageBytes;
+  } catch (e) {
+    print('Export failed: $e');
+    return null;
+  }
+}
+
+void clearPaintedCanvas() {
+  ImagePainter.globalKey.currentState?.clearCanvas();
+}
+
+void undoPaintAction() {
+  ImagePainter.globalKey.currentState?.undoLastAction();
+}
+```
+
+### Method 3: Using FlutterFlow's Widget State Management
+
+FlutterFlow provides ways to manage widget state. Here's the most FlutterFlow-friendly approach:
+
+```dart
+// In your ImagePainter widget, add these public methods:
+class ImagePainterState extends State<ImagePainter> {
+  // ...existing code...
+  
+  // Make these methods static so they can be called from anywhere
+  static ImagePainterState? _currentInstance;
+  
+  @override
+  void initState() {
+    super.initState();
+    _currentInstance = this; // Store current instance
+  }
+  
+  @override
+  void dispose() {
+    if (_currentInstance == this) {
+      _currentInstance = null;
+    }
+    super.dispose();
+  }
+  
+  // Static methods that can be called from FlutterFlow actions
+  static Future<Uint8List?> exportCurrentImage() async {
+    return await _currentInstance?.exportImage();
+  }
+  
+  static void clearCurrentCanvas() {
+    _currentInstance?.clearCanvas();
+  }
+  
+  static void undoCurrentAction() {
+    _currentInstance?.undoLastAction();
+  }
+  
+  // ...existing code...
+}
+
+// Then your FlutterFlow actions become much simpler:
+Future<Uint8List?> exportPaintedImage() async {
+  return await ImagePainterState.exportCurrentImage();
+}
+
+void clearPaintedCanvas() {
+  ImagePainterState.clearCurrentCanvas();
+}
+
+void undoPaintAction() {
+  ImagePainterState.undoCurrentAction();
+}
+```
+
+## 📝 Quick Summary: Widget State Reference
+
+### The Answer: Use Static Methods with Global Key
+
+**The simplest and most reliable way to reference your widget state in FlutterFlow is:**
+
+1. **Use the global key approach** (already implemented in the templates above)
+2. **Call static methods** from your FlutterFlow actions
+3. **No parameters needed** - the widget manages its own state
+
+### ✅ Exact Steps:
+
+1. **Copy** `flutterflow_widget_template.dart` → FlutterFlow Custom Widget
+2. **Copy** action code from `flutterflow_actions_template.dart` → FlutterFlow Custom Actions  
+3. **Call actions** from buttons: `exportPaintedImage()`, `clearPaintedCanvas()`, `undoPaintAction()`
+
+### 🎯 In Your FlutterFlow Actions:
+
+```dart
+// ✅ CORRECT - No widget reference needed
+Future<Uint8List?> exportPaintedImage() async {
+  return await ImagePainterWidget.exportCurrentImage();
+}
+
+// ❌ WRONG - Don't try to get widget reference manually
+Future<Uint8List?> exportPaintedImage() async {
+  final painterState = // This is what you were asking about - YOU DON'T NEED THIS
+  // ...
+}
+```
+
+### 🔧 The Magic Behind It:
+
+- **Global Key**: `ImagePainterWidget.globalKey` gives global access to the widget
+- **Static Methods**: Can be called from anywhere without widget reference
+- **Automatic Registration**: Widget registers itself when created
+
+**You don't need to manually get widget references - the templates handle everything!** 🎉
+
+## 🎯 Practical FlutterFlow Setup Example
+
+### Complete Step-by-Step Implementation
+
+#### Step 1: Create the Custom Widget (Recommended Approach)
+
+```dart
+// File: image_painter_widget.dart (in FlutterFlow Custom Widgets)
+import 'package:flutter/material.dart';
+import 'package:image_painter/flutterflow_image_painter.dart';
+import 'dart:typed_data';
+
+class ImagePainterWidget extends StatefulWidget {
+  const ImagePainterWidget({
+    Key? key,
+    this.width = 400,
+    this.height = 400,
+    this.backgroundType = 'blank',
+    this.backgroundColor = Colors.white,
+    // ...other parameters
+  }) : super(key: key);
+
+  final double width;
+  final double height;
+  final String backgroundType;
+  final Color backgroundColor;
+  // ...other parameters
+
+  // IMPORTANT: Static key for global access
+  static final GlobalKey<ImagePainterWidgetState> globalKey = 
+      GlobalKey<ImagePainterWidgetState>();
+
+  @override
+  ImagePainterWidgetState createState() => ImagePainterWidgetState();
+}
+
+class ImagePainterWidgetState extends State<ImagePainterWidget> {
+  final GlobalKey<FlutterFlowImagePainterState> _painterKey = 
+      GlobalKey<FlutterFlowImagePainterState>();
+
+  @override
+  Widget build(BuildContext context) {
+    return FlutterFlowImagePainter(
+      key: _painterKey,
+      width: widget.width,
+      height: widget.height,
+      backgroundType: widget.backgroundType,
+      backgroundColor: widget.backgroundColor,
+      // ...other parameters
+    );
+  }
+
+  // Public methods that can be called from FlutterFlow actions
+  Future<Uint8List?> exportImage() async {
+    return await _painterKey.currentState?.exportImage();
+  }
+
+  void clearCanvas() {
+    _painterKey.currentState?.clearCanvas();
+  }
+
+  void undoLastAction() {
+    _painterKey.currentState?.undoLastAction();
+  }
+
+  // Static methods for global access (EASIEST FOR FLUTTERFLOW)
+  static Future<Uint8List?> exportCurrentImage() async {
+    return await ImagePainterWidget.globalKey.currentState?.exportImage();
+  }
+
+  static void clearCurrentCanvas() {
+    ImagePainterWidget.globalKey.currentState?.clearCanvas();
+  }
+
+  static void undoCurrentAction() {
+    ImagePainterWidget.globalKey.currentState?.undoLastAction();
+  }
+}
+```
+
+#### Step 2: Create Custom Actions (Simplest Approach)
+
+```dart
+// File: export_image_action.dart (in FlutterFlow Custom Actions)
+import 'dart:typed_data';
+import '/custom_code/widgets/image_painter_widget.dart';
+
+Future<Uint8List?> exportPaintedImage() async {
+  try {
+    final imageBytes = await ImagePainterWidget.exportCurrentImage();
     
     if (imageBytes != null) {
-      // Save to device, upload to Firebase, etc.
-      // Example: Save to gallery
-      // await saveImageToGallery(imageBytes);
-      
-      // Example: Upload to Firebase Storage
-      // await uploadToFirebaseStorage(imageBytes);
+      // Success! You can now:
+      // 1. Save to device storage
+      // 2. Upload to Firebase Storage
+      // 3. Send via API
+      // 4. Share with other apps
       
       return imageBytes;
     }
@@ -193,242 +475,149 @@ Future<Uint8List?> exportPaintedImage() async {
   
   return null;
 }
-```
 
-### Clear Canvas Action
+// File: clear_canvas_action.dart
+import '/custom_code/widgets/image_painter_widget.dart';
 
-```dart
-void clearPaintedCanvas() {
-  // Get reference to your Image Painter widget
-  final painterState = // Reference to your widget state
-  
-  painterState.clearCanvas();
-}
-```
-
-### Undo Action
-
-```dart
-void undoPaintAction() {
-  // Get reference to your Image Painter widget  
-  final painterState = // Reference to your widget state
-  
-  painterState.undoLastAction();
-}
-```
-
-## 📱 Common FlutterFlow Use Cases
-
-### 1. Simple Drawing App
-
-```dart
-// Widget Configuration in FlutterFlow
-ImagePainter(
-  width: MediaQuery.of(context).size.width,
-  height: 400,
-  backgroundType: 'blank',
-  backgroundColor: Colors.white,
-  showTextTool: false,  // Hide text tool
-  showShapesTools: true,
-  showSaveTool: true,
-)
-```
-
-### 2. Note-Taking App
-
-```dart
-// Widget Configuration for note-taking
-ImagePainter(
-  width: MediaQuery.of(context).size.width,
-  height: 600,
-  backgroundType: 'lined',  // Lined notebook background
-  showShapesTools: false,   // Hide complex shapes
-  showTextTool: true,       // Enable text annotation
-  strokeWidth: 2.0,         // Thinner lines for writing
-  paintColor: Colors.blue,
-)
-```
-
-### 3. Photo Annotation
-
-```dart
-// Widget Configuration for photo annotation
-ImagePainter(
-  width: 400,
-  height: 300,
-  backgroundType: 'network',
-  backgroundImageUrl: 'https://example.com/photo.jpg',
-  showTextTool: true,
-  showShapesTools: true,
-  paintColor: Colors.red,   // Annotation color
-  strokeWidth: 3.0,
-)
-```
-
-### 4. Kids Drawing App
-
-```dart
-// Widget Configuration for kids
-ImagePainter(
-  width: MediaQuery.of(context).size.width,
-  height: 500,
-  backgroundType: 'graph',  // Fun grid background
-  showTextTool: false,      // Simplify for kids
-  showStrokeTool: false,    // Fixed brush size
-  showColorTool: true,      // Let them choose colors
-  strokeWidth: 6.0,         // Thick, easy-to-see lines
-  isScalable: false,        // Prevent accidental zooming
-)
-```
-
-## 🔄 State Management in FlutterFlow
-
-Since FlutterFlow doesn't support complex state management, the widget manages its own state internally. You can:
-
-1. **Configure initial state** through widget parameters
-2. **Trigger actions** through widget state methods
-3. **Handle results** in custom actions
-
-### Example: Save to Firebase
-
-```dart
-// Custom Action in FlutterFlow
-Future<void> saveDrawingToFirebase() async {
+Future<void> clearPaintedCanvas() async {
   try {
-    // Export the image
-    final imageBytes = await painterWidgetState.exportImage();
+    ImagePainterWidget.clearCurrentCanvas();
+  } catch (e) {
+    print('Clear failed: $e');
+  }
+}
+
+// File: undo_action.dart
+import '/custom_code/widgets/image_painter_widget.dart';
+
+Future<void> undoPaintAction() async {
+  try {
+    ImagePainterWidget.undoCurrentAction();
+  } catch (e) {
+    print('Undo failed: $e');
+  }
+}
+```
+
+#### Step 3: Use in FlutterFlow Page
+
+1. **Add the widget to your page**:
+   - Drag "Custom Widget" to your page
+   - Select "ImagePainterWidget"
+   - Configure parameters in the properties panel
+
+2. **Add action buttons**:
+   ```dart
+   // Export Button Action:
+   // 1. Create button
+   // 2. Add "On Tap" action
+   // 3. Select "Custom Action" → "exportPaintedImage"
+   // 4. Handle the returned Uint8List (save to variable, upload, etc.)
+
+   // Clear Button Action:
+   // 1. Create button  
+   // 2. Add "On Tap" action
+   // 3. Select "Custom Action" → "clearPaintedCanvas"
+
+   // Undo Button Action:
+   // 1. Create button
+   // 2. Add "On Tap" action  
+   // 3. Select "Custom Action" → "undoPaintAction"
+   ```
+
+#### Step 4: Handle Export Results
+
+```dart
+// In your FlutterFlow page actions:
+
+// Action: Save to Firebase Storage
+Future<String?> saveImageToFirebase() async {
+  try {
+    // 1. Export the image
+    final imageBytes = await exportPaintedImage();
     
     if (imageBytes != null) {
-      // Upload to Firebase Storage
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('drawings/${DateTime.now().millisecondsSinceEpoch}.png');
+      // 2. Upload to Firebase Storage
+      final fileName = 'drawing_${DateTime.now().millisecondsSinceEpoch}.png';
+      final ref = FirebaseStorage.instance.ref().child('drawings/$fileName');
       
       await ref.putData(imageBytes);
       final downloadUrl = await ref.getDownloadURL();
       
-      // Save metadata to Firestore
+      // 3. Save metadata to Firestore
       await FirebaseFirestore.instance.collection('drawings').add({
         'imageUrl': downloadUrl,
+        'fileName': fileName,
         'createdAt': FieldValue.serverTimestamp(),
-        'userId': getCurrentUserId(),
+        'userId': FFAppState().userId, // Your user ID
       });
       
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Drawing saved successfully!')),
-      );
+      return downloadUrl;
     }
   } catch (e) {
-    // Handle error
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Failed to save: $e')),
-    );
+    print('Firebase save failed: $e');
   }
-}
-```
-
-## ⚠️ FlutterFlow Limitations & Workarounds
-
-### Limitations:
-1. **No callback functions** - Use widget state methods instead
-2. **No complex objects** - Use simple parameters (String, bool, double)
-3. **Limited state sharing** - Widget manages its own state
-
-### Workarounds:
-1. **Export functionality** - Use widget state methods called from actions
-2. **Configuration** - Use simple parameters instead of config objects
-3. **Events** - Use FlutterFlow's action system with widget state methods
-
-## 🧪 Testing in FlutterFlow
-
-1. **Create a test page** with the Image Painter widget
-2. **Configure parameters** using FlutterFlow's widget properties panel
-3. **Add action buttons** that call the widget state methods
-4. **Test different backgrounds** by changing the `backgroundType` parameter
-5. **Test toolbar customization** by toggling the show/hide parameters
-
-## 📚 Complete Example
-
-```dart
-// FlutterFlow Page with Image Painter
-class DrawingPage extends StatefulWidget {
-  @override
-  _DrawingPageState createState() => _DrawingPageState();
+  
+  return null;
 }
 
-class _DrawingPageState extends State<DrawingPage> {
-  final GlobalKey<ImagePainterState> _painterKey = GlobalKey();
-  String _backgroundType = 'blank';
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Drawing App'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.save),
-            onPressed: _saveDrawing,
-          ),
-          IconButton(
-            icon: Icon(Icons.clear),
-            onPressed: _clearDrawing,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Background selector
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton(
-                onPressed: () => setState(() => _backgroundType = 'blank'),
-                child: Text('Blank'),
-              ),
-              ElevatedButton(
-                onPressed: () => setState(() => _backgroundType = 'graph'),
-                child: Text('Grid'),
-              ),
-              ElevatedButton(
-                onPressed: () => setState(() => _backgroundType = 'lined'),
-                child: Text('Lined'),
-              ),
-            ],
-          ),
-          // Image Painter
-          Expanded(
-            child: ImagePainter(
-              key: _painterKey,
-              width: MediaQuery.of(context).size.width,
-              height: MediaQuery.of(context).size.height - 200,
-              backgroundType: _backgroundType,
-              backgroundColor: Colors.white,
-              showTextTool: true,
-              showShapesTools: true,
-              controlsAtTop: false,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _saveDrawing() async {
-    final imageBytes = await _painterKey.currentState?.exportImage();
+// Action: Save to Device Gallery
+Future<bool> saveImageToGallery() async {
+  try {
+    final imageBytes = await exportPaintedImage();
+    
     if (imageBytes != null) {
-      // Handle save (upload to cloud, save to gallery, etc.)
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Drawing saved!')),
+      // Use gallery_saver or similar package
+      final fileName = 'drawing_${DateTime.now().millisecondsSinceEpoch}.png';
+      final success = await GallerySaver.saveImage(
+        imageBytes,
+        albumName: 'My Drawings',
+        fileName: fileName,
       );
+      
+      return success ?? false;
     }
+  } catch (e) {
+    print('Gallery save failed: $e');
   }
-
-  void _clearDrawing() {
-    _painterKey.currentState?.clearCanvas();
-  }
+  
+  return false;
 }
 ```
 
-This FlutterFlow-compatible version provides all the enhanced features while working within FlutterFlow's constraints!
+### 🎮 FlutterFlow Action Flow Examples
+
+#### Example 1: Save Button with Confirmation
+
+```
+User taps "Save" button
+    ↓
+FlutterFlow Action Chain:
+    1. Show loading indicator
+    2. Call exportPaintedImage()
+    3. Call saveImageToFirebase()
+    4. Hide loading indicator
+    5. Show success/error snackbar
+```
+
+#### Example 2: Clear Button with Confirmation Dialog
+
+```
+User taps "Clear" button
+    ↓
+FlutterFlow Action Chain:
+    1. Show confirmation dialog
+    2. If confirmed → Call clearPaintedCanvas()
+    3. Show success message
+```
+
+#### Example 3: Auto-save Every 30 seconds
+
+```
+Page Timer (30 seconds)
+    ↓
+FlutterFlow Action Chain:
+    1. Call exportPaintedImage() (silently)
+    2. Save to local storage as backup
+    3. Optional: Show subtle "Auto-saved" indicator
+```
