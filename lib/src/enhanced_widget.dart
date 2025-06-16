@@ -148,6 +148,15 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void clearCanvas() {
     _controller.clear();
     if (widget.config.onClear != null) widget.config.onClear!();
+    
+    // Show feedback message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Canvas cleared'),
+        duration: Duration(seconds: 1),
+        backgroundColor: Colors.blue,
+      ),
+    );
   }
 
   @override

@@ -78,8 +78,8 @@ class _ImagePainterWidgetState extends State<ImagePainterWidget> {
               toolbarAtTop: toolbarAtTop,
               toolbarBackgroundColor: Colors.grey[200],
               onSave: _handleSave,
-              onUndo: _handleUndo,
-              onClear: _handleClear,
+              // onUndo: _handleUndo,  // REMOVED: Causes infinite recursion
+              // onClear: _handleClear, // REMOVED: Causes infinite recursion
             ),
           ),
           if (_isSaving)
@@ -153,17 +153,6 @@ class _ImagePainterWidgetState extends State<ImagePainterWidget> {
     } finally {
       setState(() => _isSaving = false);
     }
-  }
-
-  // CUSTOMIZE UNDO ACTION HERE
-  void _handleUndo() {
-    _painterKey.currentState?.undoLastAction();
-  }
-
-  // CUSTOMIZE CLEAR ACTION HERE  
-  void _handleClear() {
-    _painterKey.currentState?.clearCanvas();
-    _showMessage('Canvas cleared', Colors.blue);
   }
 
   void _showMessage(String message, Color color) {

@@ -1,8 +1,25 @@
 # 🔧 Enhanced Fixes Applied - Version 1.2
 
-## **🎯 ROOT CAUSE FOUND AND FIXED!**
+## **🎯 CRITICAL FIXES APPLIED!**
 
-You were absolutely right - it wasn't a throttling issue! The real-time preview wasn't working because of **missing `notifyListeners()` calls** in the controller.
+Multiple root causes found and fixed, including a **stack overflow bug** in the undo functionality!
+
+---
+
+## **🚨 CRITICAL FIX: Stack Overflow in Undo - RESOLVED**
+
+**Root Cause Identified:**
+- FlutterFlow widget was setting `onUndo: _handleUndo` in config
+- `undoLastAction()` calls `_controller.undo()` AND `widget.config.onUndo!()`
+- This created infinite recursion: `_handleUndo` → `undoLastAction` → `_handleUndo` → ...
+- **STACK OVERFLOW ERROR**
+
+**Fix Applied:**
+- **Removed `onUndo` and `onClear` callbacks** from FlutterFlow widget config
+- Built-in undo/clear buttons in toolbar work directly without recursion
+- Added snackbar feedback for clear action
+
+**Expected Result:** Undo button now works without crashing.
 
 ---
 
@@ -25,6 +42,17 @@ You were absolutely right - it wasn't a throttling issue! The real-time preview 
 
 ## **🔍 Debug Testing Instructions**
 
+**For Undo Testing (CRITICAL):**
+1. Draw 3-4 different items
+2. Click Undo button multiple times
+3. Should see console logs like:
+   ```
+   UNDO: Before - History length: 4
+   UNDO: Removed item with mode: PaintMode.line
+   UNDO: After - History length: 3
+   ```
+4. **Should NOT see any stack overflow errors**
+
 **For Real-time Preview Testing:**
 1. Open browser Dev Tools Console (F12)
 2. Select Line, Rectangle, or Circle mode
@@ -35,14 +63,6 @@ You were absolutely right - it wasn't a throttling issue! The real-time preview 
    SET IN PROGRESS: true for mode PaintMode.line
    Drawing preview for mode: PaintMode.line, start: Offset(100, 150), end: Offset(100, 150)
    ```
-4. Continue drawing - you should see continuous updates:
-   ```
-   SET END: Offset(120, 160) for mode PaintMode.line
-   Drawing preview for mode: PaintMode.line, start: Offset(100, 150), end: Offset(120, 160)
-   Drawing line from Offset(100, 150) to Offset(120, 160)
-   ```
-
-**If preview still doesn't work**, the console logs will show exactly where the problem is.
 
 ---
 
