@@ -272,20 +272,12 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   Widget _buildModeSelector() {
     return PopupMenuButton<PaintMode>(
       icon: Icon(_getModeIcon(_controller.mode)),
-      tooltip: _controller.mode == PaintMode.text 
-          ? 'Text Mode - Click canvas to add text'
-          : 'Drawing Mode: ${_getModeLabel(_controller.mode)}',
+      tooltip: 'Drawing Mode: ${_getModeLabel(_controller.mode)}',
       onSelected: (mode) {
         _controller.setMode(mode);
-        // Show instruction for text mode
+        // Open text dialog immediately when text mode is selected, just like original
         if (mode == PaintMode.text) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Text mode selected. Click on canvas to add text.'),
-              duration: Duration(seconds: 2),
-              backgroundColor: Colors.blue,
-            ),
-          );
+          _openTextDialog();
         }
       },
       itemBuilder: (context) => widget.config.enabledModes.map((mode) {
@@ -389,8 +381,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                         SizedBox(height: 8),
                         Slider(
                           value: _controller.strokeWidth,
-                          min: 1,
-                          max: 20,
+                          min: 2,
+                          max: 40,
                           divisions: 19,
                           label: '${_controller.strokeWidth.toInt()}px',
                           onChanged: (value) {
@@ -427,52 +419,19 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void _handleInteractionStart(ScaleStartDetails details) {
     final offset = _transformationController.toScene(details.localFocalPoint);
     _controller.setStart(offset);
-    _controller.setEnd(offset); // Set initial end position same as start
-    _controller.setInProgress(true); // CRITICAL: Set inProgress immediately
-    
-    // Handle text mode specially
-    if (_controller.mode == PaintMode.text) {
-      _openTextDialog(offset);
-      return;
-    }
-    
     _controller.addOffsets(offset);
   }
 
   void _handleInteractionUpdate(ScaleUpdateDetails details) {
     final offset = _transformationController.toScene(details.localFocalPoint);
     
-    // Much lighter throttling for shape modes to ensure real-time preview
-    final now = DateTime.now();
-    Duration threshold;
-    switch (_controller.mode) {
-      case PaintMode.freeStyle:
-        threshold = _updateThreshold; // 16ms
-        break;
-      default:
-        threshold = Duration(milliseconds: 4); // Very light throttling for shapes
-    }
-    
-    if (now.difference(_lastUpdateTime) < threshold) {
-      return;
-    }
-    _lastUpdateTime = now;
-    
     _controller.setInProgress(true);
-    
     if (_controller.start == null) {
       _controller.setStart(offset);
-      if (_controller.mode == PaintMode.freeStyle) {
-        _currentStroke.clear();
-        _currentStroke.add(offset);
-      }
     }
-    
-    // Always update end position for real-time preview
     _controller.setEnd(offset);
     
     if (_controller.mode == PaintMode.freeStyle) {
-      _currentStroke.add(offset);
       _controller.addOffsets(offset);
     }
   }
@@ -483,10 +442,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     if (_controller.start != null && _controller.end != null) {
       if (_controller.mode == PaintMode.freeStyle) {
         _controller.addOffsets(null); // End stroke marker
-        // Use the collected stroke points for better performance
         _addFreeStylePoints();
         _controller.offsets.clear();
-        _currentStroke.clear();
       } else if (_controller.mode != PaintMode.text) {
         _addEndPoints();
       }
@@ -507,12 +464,9 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   void _addFreeStylePoints() {
-    // Use the collected stroke points for better performance and consistency
-    final strokePoints = _currentStroke.isNotEmpty ? List<Offset?>.from(_currentStroke) : [..._controller.offsets];
-    
     _controller.addPaintInfo(
       PaintInfo(
-        offsets: strokePoints,
+        offsets: [..._controller.offsets],
         mode: PaintMode.freeStyle,
         color: _controller.color,
         strokeWidth: _controller.strokeWidth,
@@ -520,7 +474,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     );
   }
 
-  void _openTextDialog([Offset? position]) {
+  void _openTextDialog() {
+    final fontSize = 6 * _controller.strokeWidth;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -537,12 +492,12 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           ),
           TextButton(
             onPressed: () {
-              if (_textController.text.isNotEmpty && position != null) {
+              if (_textController.text.isNotEmpty) {
                 _controller.addPaintInfo(
                   PaintInfo(
                     mode: PaintMode.text,
                     text: _textController.text,
-                    offsets: [position],
+                    offsets: [], // Empty offsets for now - positioning handled differently
                     color: _controller.color,
                     strokeWidth: _controller.strokeWidth,
                   ),

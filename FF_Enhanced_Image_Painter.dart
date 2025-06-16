@@ -76,10 +76,8 @@ class _ImagePainterWidgetState extends State<ImagePainterWidget> {
               defaultStrokeWidth: defaultStrokeWidth,
               defaultColor: defaultColor,
               toolbarAtTop: toolbarAtTop,
-              toolbarBackgroundColor: Colors.grey[200],
+              toolbarBackgroundColor: Colors.grey[300],
               onSave: _handleSave,
-              // onUndo: _handleUndo,  // REMOVED: Causes infinite recursion
-              // onClear: _handleClear, // REMOVED: Causes infinite recursion
             ),
           ),
           if (_isSaving)
