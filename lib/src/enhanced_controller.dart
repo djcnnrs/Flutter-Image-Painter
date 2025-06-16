@@ -189,13 +189,18 @@ class EnhancedImagePainterController extends ChangeNotifier {
 
   void undo() {
     if (_paintHistory.isNotEmpty) {
+      print('Undo: Removing last item from ${_paintHistory.length} items');
       _paintHistory.removeLast();
       _markForRepaint();
       notifyListeners();
+      print('Undo: Now have ${_paintHistory.length} items');
+    } else {
+      print('Undo: No items to remove');
     }
   }
 
   void clear() {
+    print('Clear: Clearing all ${_paintHistory.length} items');
     _paintHistory.clear();
     _offsets.clear();
     resetStartAndEnd();

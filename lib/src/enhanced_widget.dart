@@ -266,9 +266,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       tooltip: 'Drawing Mode',
       onSelected: (mode) {
         _controller.setMode(mode);
-        if (mode == PaintMode.text) {
-          _openTextDialog();
-        }
+        // Don't automatically open text dialog - wait for user to click
       },
       itemBuilder: (context) => widget.config.enabledModes.map((mode) {
         return PopupMenuItem(
@@ -334,14 +332,25 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       itemBuilder: (context) => [
         PopupMenuItem(
           enabled: false,
-          child: SizedBox(
-            width: 200,
-            child: Slider(
-              value: _controller.strokeWidth,
-              min: 1,
-              max: 10,
-              divisions: 9,
-              onChanged: (value) => _controller.setStrokeWidth(value),
+          child: StatefulBuilder(
+            builder: (context, setSliderState) => SizedBox(
+              width: 200,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Stroke Width: ${_controller.strokeWidth.toInt()}'),
+                  Slider(
+                    value: _controller.strokeWidth,
+                    min: 1,
+                    max: 10,
+                    divisions: 9,
+                    onChanged: (value) {
+                      _controller.setStrokeWidth(value);
+                      setSliderState(() {}); // Update the slider UI immediately
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -352,16 +361,24 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void _handleInteractionStart(ScaleStartDetails details) {
     final offset = _transformationController.toScene(details.localFocalPoint);
     _controller.setStart(offset);
+    
+    // Handle text mode specially
+    if (_controller.mode == PaintMode.text) {
+      _openTextDialog(offset);
+      return;
+    }
+    
     _controller.addOffsets(offset);
   }
 
   void _handleInteractionUpdate(ScaleUpdateDetails details) {
     final offset = _transformationController.toScene(details.localFocalPoint);
     
-    // Throttle updates for better performance
+    // Lighter throttling for shape modes to enable real-time preview
     final now = DateTime.now();
-    if (now.difference(_lastUpdateTime) < _updateThreshold) {
-      return; // Skip this update to maintain ~60 FPS
+    Duration threshold = _controller.mode == PaintMode.freeStyle ? _updateThreshold : Duration(milliseconds: 8);
+    if (now.difference(_lastUpdateTime) < threshold) {
+      return; // Skip this update for performance
     }
     _lastUpdateTime = now;
     
@@ -425,7 +442,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     );
   }
 
-  void _openTextDialog() {
+  void _openTextDialog([Offset? position]) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -442,12 +459,12 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           ),
           TextButton(
             onPressed: () {
-              if (_textController.text.isNotEmpty) {
+              if (_textController.text.isNotEmpty && position != null) {
                 _controller.addPaintInfo(
                   PaintInfo(
                     mode: PaintMode.text,
                     text: _textController.text,
-                    offsets: [],
+                    offsets: [position],
                     color: _controller.color,
                     strokeWidth: _controller.strokeWidth,
                   ),
