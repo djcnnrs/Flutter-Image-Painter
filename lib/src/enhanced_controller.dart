@@ -130,9 +130,52 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   void addPaintInfo(PaintInfo info) {
-    _paintHistory.add(info);
+    // Optimize stroke points for freeStyle to prevent memory issues
+    PaintInfo optimizedInfo = info;
+    if (info.mode == PaintMode.freeStyle && info.offsets.length > 100) {
+      optimizedInfo = PaintInfo(
+        offsets: _optimizeStrokePoints(info.offsets),
+        mode: info.mode,
+        color: info.color,
+        strokeWidth: info.strokeWidth,
+        fill: info.fill,
+        text: info.text,
+      );
+    }
+    
+    _paintHistory.add(optimizedInfo);
     _markForRepaint();
     notifyListeners();
+  }
+
+  /// Optimizes stroke points by removing redundant points while maintaining visual quality
+  List<Offset?> _optimizeStrokePoints(List<Offset?> points) {
+    if (points.length <= 100) return points;
+    
+    final optimized = <Offset?>[];
+    const minDistance = 2.0; // Minimum distance between points
+    
+    for (int i = 0; i < points.length; i++) {
+      final point = points[i];
+      if (point == null) {
+        optimized.add(null);
+        continue;
+      }
+      
+      // Always keep first and last points
+      if (i == 0 || i == points.length - 1) {
+        optimized.add(point);
+        continue;
+      }
+      
+      // Keep point if it's far enough from the previous kept point
+      final lastKept = optimized.isEmpty ? null : optimized.last;
+      if (lastKept == null || (point - lastKept).distance >= minDistance) {
+        optimized.add(point);
+      }
+    }
+    
+    return optimized;
   }
 
   void resetStartAndEnd() {

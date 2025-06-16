@@ -1,32 +1,40 @@
-// FlutterFlow Custom Widget - Copy this code
-// Widget Name: ImagePainterWidget
-// Parameters: width (double), height (double), bgImage (String?), jobRef (DocumentReference?)
-// Dependencies: enhanced_image_painter (GitHub), firebase_storage, cloud_firestore
-
+// Automatic FlutterFlow imports
+import '/backend/backend.dart';
+import '/backend/schema/structs/index.dart';
+import '/backend/schema/enums/enums.dart';
+import '/actions/actions.dart' as action_blocks;
+import '/flutter_flow/flutter_flow_theme.dart';
+import '/flutter_flow/flutter_flow_util.dart';
+import '/custom_code/widgets/index.dart'; // Imports other custom widgets
+import '/custom_code/actions/index.dart'; // Imports custom actions
+import '/flutter_flow/custom_functions.dart'; // Imports custom functions
 import 'package:flutter/material.dart';
+// Begin custom widget code
+// DO NOT REMOVE OR MODIFY THE CODE ABOVE!
+
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:enhanced_image_painter/enhanced_image_painter.dart';
 
 class ImagePainterWidget extends StatefulWidget {
   const ImagePainterWidget({
-    Key? key,
-    required this.width,
-    required this.height,
+    super.key,
+    this.width,
+    this.height,
     this.bgImage,
     this.jobRef,
-  }) : super(key: key);
+  });
 
-  final double width;
-  final double height;
+  final double? width;
+  final double? height;
   final String? bgImage;
   final DocumentReference? jobRef;
 
   @override
-  ImagePainterWidgetState createState() => ImagePainterWidgetState();
+  State<ImagePainterWidget> createState() => _ImagePainterWidgetState();
 }
 
-class ImagePainterWidgetState extends State<ImagePainterWidget> {
+class _ImagePainterWidgetState extends State<ImagePainterWidget> {
   bool _isSaving = false;
   final GlobalKey<EnhancedImagePainterState> _painterKey = GlobalKey<EnhancedImagePainterState>();
   
@@ -48,6 +56,9 @@ class ImagePainterWidgetState extends State<ImagePainterWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final double actualWidth = widget.width ?? 300;
+    final double actualHeight = widget.height ?? 200;
+    
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade300),
@@ -57,8 +68,8 @@ class ImagePainterWidgetState extends State<ImagePainterWidget> {
         children: [
           EnhancedImagePainter(
             key: _painterKey,
-            width: widget.width,
-            height: widget.height,
+            width: actualWidth,
+            height: actualHeight,
             bgImage: widget.bgImage,
             config: EnhancedImagePainterConfig(
               enabledModes: enabledModes,

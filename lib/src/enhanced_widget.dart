@@ -60,6 +60,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   bool _isLoading = false;
   double _actualWidth = 0;
   double _actualHeight = 0;
+  
+  // Performance optimization variables
+  DateTime _lastUpdateTime = DateTime.now();
+  static const _updateThreshold = Duration(milliseconds: 16); // ~60 FPS
+  List<Offset> _currentStroke = [];
 
   @override
   void initState() {
@@ -192,11 +197,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           child: Container(
             width: _actualWidth,
             height: _actualHeight,
-            child: CustomPaint(
-              size: Size(_actualWidth, _actualHeight),
-              painter: EnhancedImageCustomPainter(
-                controller: _controller,
+            child: RepaintBoundary(
+              child: CustomPaint(
                 size: Size(_actualWidth, _actualHeight),
+                painter: EnhancedImageCustomPainter(
+                  controller: _controller,
+                  size: Size(_actualWidth, _actualHeight),
+                ),
               ),
             ),
           ),
@@ -350,14 +357,27 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   void _handleInteractionUpdate(ScaleUpdateDetails details) {
     final offset = _transformationController.toScene(details.localFocalPoint);
+    
+    // Throttle updates for better performance
+    final now = DateTime.now();
+    if (now.difference(_lastUpdateTime) < _updateThreshold) {
+      return; // Skip this update to maintain ~60 FPS
+    }
+    _lastUpdateTime = now;
+    
     _controller.setInProgress(true);
     
     if (_controller.start == null) {
       _controller.setStart(offset);
+      if (_controller.mode == PaintMode.freeStyle) {
+        _currentStroke.clear();
+        _currentStroke.add(offset);
+      }
     }
     _controller.setEnd(offset);
     
     if (_controller.mode == PaintMode.freeStyle) {
+      _currentStroke.add(offset);
       _controller.addOffsets(offset);
     }
   }
@@ -367,9 +387,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     
     if (_controller.start != null && _controller.end != null) {
       if (_controller.mode == PaintMode.freeStyle) {
-        _controller.addOffsets(null);
+        _controller.addOffsets(null); // End stroke marker
+        // Use the collected stroke points for better performance
         _addFreeStylePoints();
         _controller.offsets.clear();
+        _currentStroke.clear();
       } else if (_controller.mode != PaintMode.text) {
         _addEndPoints();
       }
@@ -390,9 +412,12 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   void _addFreeStylePoints() {
+    // Use the collected stroke points for better performance and consistency
+    final strokePoints = _currentStroke.isNotEmpty ? List<Offset?>.from(_currentStroke) : [..._controller.offsets];
+    
     _controller.addPaintInfo(
       PaintInfo(
-        offsets: [..._controller.offsets],
+        offsets: strokePoints,
         mode: PaintMode.freeStyle,
         color: _controller.color,
         strokeWidth: _controller.strokeWidth,
