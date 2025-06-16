@@ -1,42 +1,129 @@
-// FlutterFlow Custom Widget - TEST VERSION
-// Widget Name: SimpleImagePainter
-// Parameters: width (double), height (double)
-// Dependencies: NONE (for testing)
-
+// Automatic FlutterFlow imports
+import '/backend/backend.dart';
+import '/backend/schema/structs/index.dart';
+import '/backend/schema/enums/enums.dart';
+import '/actions/actions.dart' as action_blocks;
+import '/flutter_flow/flutter_flow_theme.dart';
+import '/flutter_flow/flutter_flow_util.dart';
+import '/custom_code/widgets/index.dart'; // Imports other custom widgets
+import '/custom_code/actions/index.dart'; // Imports custom actions
+import '/flutter_flow/custom_functions.dart'; // Imports custom functions
 import 'package:flutter/material.dart';
+// Begin custom widget code
+// DO NOT REMOVE OR MODIFY THE CODE ABOVE!
+
+import 'package:enhanced_image_painter/enhanced_image_painter.dart';
 
 class SimpleImagePainter extends StatefulWidget {
   const SimpleImagePainter({
-    Key? key,
-    required this.width,
-    required this.height,
-  }) : super(key: key);
+    super.key,
+    this.width,
+    this.height,
+  });
 
-  final double width;
-  final double height;
+  final double? width;
+  final double? height;
 
   @override
-  SimpleImagePainterState createState() => SimpleImagePainterState();
+  State<SimpleImagePainter> createState() => _SimpleImagePainterState();
 }
 
-class SimpleImagePainterState extends State<SimpleImagePainter> {
+class _SimpleImagePainterState extends State<SimpleImagePainter> {
+  late EnhancedImagePainterController _controller;
+  List<Offset> _currentStroke = [];
+  bool _isDirty = false;
+  DateTime _lastUpdateTime = DateTime.now();
+  static const _updateThreshold = Duration(milliseconds: 16); // ~60 FPS
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = EnhancedImagePainterController();
+    
+    // Listen to controller changes to trigger repaints
+    _controller.addListener(_onControllerChange);
+  }
+
+  void _onControllerChange() {
+    if (!_isDirty) {
+      _isDirty = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _isDirty) {
+          setState(() {
+            _isDirty = false;
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onControllerChange);
+    _controller.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final double actualWidth = widget.width ?? 300;
+    final double actualHeight = widget.height ?? 200;
+    
     return Container(
-      width: widget.width,
-      height: widget.height,
+      width: actualWidth,
+      height: actualHeight,
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade300),
         borderRadius: BorderRadius.circular(8),
         color: Colors.white,
       ),
-      child: Center(
-        child: Text(
-          'Image Painter\n${widget.width.toInt()} x ${widget.height.toInt()}',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 16,
-            color: Colors.black54,
+      child: RepaintBoundary(
+        child: CustomPaint(
+          size: Size(actualWidth, actualHeight),
+          painter: EnhancedImageCustomPainter(
+            controller: _controller,
+            size: Size(actualWidth, actualHeight),
+          ),
+          child: GestureDetector(            onPanStart: (details) {
+              _currentStroke.clear();
+              _currentStroke.add(details.localPosition);
+              _controller.setStart(details.localPosition);
+              _controller.setInProgress(true);
+            },            onPanUpdate: (details) {
+              // Throttle updates to improve performance
+              final now = DateTime.now();
+              if (now.difference(_lastUpdateTime) >= _updateThreshold) {
+                _lastUpdateTime = now;
+                
+                // Batch updates - only add to current stroke and update end position
+                _currentStroke.add(details.localPosition);
+                _controller.setEnd(details.localPosition);
+                
+                // Add the point to offsets for real-time preview
+                _controller.addOffsets(details.localPosition);
+              }
+            },onPanEnd: (details) {
+              _controller.setInProgress(false);
+              
+              // Create PaintInfo with all stroke points
+              _controller.addPaintInfo(PaintInfo(
+                mode: _controller.mode,
+                offsets: List.from(_currentStroke),
+                color: _controller.color,
+                strokeWidth: _controller.strokeWidth,
+                fill: _controller.fill,
+              ));
+              
+              // Clear temporary data
+              _controller.offsets.clear();
+              _controller.resetStartAndEnd();
+              _currentStroke.clear();
+            },
+            child: Container(
+              width: actualWidth,
+              height: actualHeight,
+              color: Colors.transparent,
+            ),
           ),
         ),
       ),

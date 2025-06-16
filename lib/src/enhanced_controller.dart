@@ -41,6 +41,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
   String? _backgroundImageUrl;
   Color _backgroundColor = Colors.white;
   ui.Image? _backgroundImage;
+  bool _shouldRepaint = false;
 
   // Getters
   PaintMode get mode => _mode;
@@ -56,6 +57,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
   String? get backgroundImageUrl => _backgroundImageUrl;
   Color get backgroundColor => _backgroundColor;
   ui.Image? get backgroundImage => _backgroundImage;
+  bool get shouldRepaint => _shouldRepaint;
 
   // Setters
   void setMode(PaintMode mode) {
@@ -98,17 +100,38 @@ class EnhancedImagePainterController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setStart(Offset? offset) => _start = offset;
-  void setEnd(Offset? offset) => _end = offset;
-  void setInProgress(bool inProgress) => _inProgress = inProgress;
+  void setStart(Offset? offset) {
+    _start = offset;
+    _markForRepaint();
+  }
+  
+  void setEnd(Offset? offset) {
+    _end = offset;
+    _markForRepaint();
+  }
+  
+  void setInProgress(bool inProgress) {
+    _inProgress = inProgress;
+    _markForRepaint();
+  }
+
+  void _markForRepaint() {
+    _shouldRepaint = true;
+  }
+
+  void _clearRepaintFlag() {
+    _shouldRepaint = false;
+  }
 
   void addOffsets(Offset? offset) {
     _offsets.add(offset);
+    _markForRepaint();
     notifyListeners();
   }
 
   void addPaintInfo(PaintInfo info) {
     _paintHistory.add(info);
+    _markForRepaint();
     notifyListeners();
   }
 
@@ -124,6 +147,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
   void undo() {
     if (_paintHistory.isNotEmpty) {
       _paintHistory.removeLast();
+      _markForRepaint();
       notifyListeners();
     }
   }
@@ -132,6 +156,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
     _paintHistory.clear();
     _offsets.clear();
     resetStartAndEnd();
+    _markForRepaint();
     notifyListeners();
   }
 
@@ -188,6 +213,9 @@ class EnhancedImageCustomPainter extends CustomPainter {
     if (controller.inProgress && controller.start != null && controller.end != null) {
       _drawCurrentStroke(canvas);
     }
+    
+    // Clear the repaint flag after painting
+    controller._clearRepaintFlag();
   }
 
   void _drawBackground(Canvas canvas, Size size) {
@@ -307,7 +335,8 @@ class EnhancedImageCustomPainter extends CustomPainter {
     final path = Path();
     bool hasMovedTo = false;
     
-    for (final offset in offsets) {
+    for (int i = 0; i < offsets.length; i++) {
+      final offset = offsets[i];
       if (offset == null) {
         hasMovedTo = false;
       } else {
@@ -315,7 +344,17 @@ class EnhancedImageCustomPainter extends CustomPainter {
           path.moveTo(offset.dx, offset.dy);
           hasMovedTo = true;
         } else {
-          path.lineTo(offset.dx, offset.dy);
+          // Use quadratic bezier curves for smoother lines
+          if (i > 0 && offsets[i - 1] != null) {
+            final prevOffset = offsets[i - 1]!;
+            final midPoint = Offset(
+              (prevOffset.dx + offset.dx) / 2,
+              (prevOffset.dy + offset.dy) / 2,
+            );
+            path.quadraticBezierTo(prevOffset.dx, prevOffset.dy, midPoint.dx, midPoint.dy);
+          } else {
+            path.lineTo(offset.dx, offset.dy);
+          }
         }
       }
     }
@@ -413,7 +452,10 @@ class EnhancedImageCustomPainter extends CustomPainter {
         canvas.drawCircle(controller.start!, radius, paint);
         break;
       case PaintMode.freeStyle:
-        _drawFreeStyle(canvas, controller.offsets, paint);
+        // For freestyle, draw the current stroke being drawn
+        if (controller.offsets.isNotEmpty) {
+          _drawFreeStyle(canvas, controller.offsets, paint);
+        }
         break;
       case PaintMode.arrow:
         _drawArrow(canvas, controller.start!, controller.end!, paint);
@@ -427,5 +469,14 @@ class EnhancedImageCustomPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    if (oldDelegate is! EnhancedImageCustomPainter) return true;
+    
+    return controller.shouldRepaint ||
+           oldDelegate.controller.paintHistory.length != controller.paintHistory.length ||
+           oldDelegate.controller.inProgress != controller.inProgress ||
+           oldDelegate.controller.start != controller.start ||
+           oldDelegate.controller.end != controller.end ||
+           oldDelegate.controller.offsets.length != controller.offsets.length;
+  }
 }
