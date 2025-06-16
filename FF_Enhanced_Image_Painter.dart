@@ -115,14 +115,7 @@ class _ImagePainterWidgetState extends State<ImagePainterWidget> {
       final fileName = 'note_${DateTime.now().millisecondsSinceEpoch}.png';
 
       String storagePath;
-      if (widget.jobRef != null) {
-        final jobSnapshot = await widget.jobRef!.get();
-        final bidRef = jobSnapshot.get('bid_ref') as DocumentReference?;
-        final bidId = bidRef?.id ?? 'unknown_bid';
-        storagePath = 'businesses/$bidId/jobs/${widget.jobRef!.id}/notes/$fileName';
-      } else {
-        storagePath = 'notes/$fileName';
-      }
+      // Add save logic here
 
       final storageRef = FirebaseStorage.instance.ref().child(storagePath);
       
@@ -133,11 +126,7 @@ class _ImagePainterWidgetState extends State<ImagePainterWidget> {
       
       final downloadUrl = await storageRef.getDownloadURL();
       
-      if (widget.jobRef != null) {
-        await widget.jobRef!.update({
-          'attachments_ref': FieldValue.arrayUnion([downloadUrl])
-        });
-      }     
+      // Add save logic here   
       _showMessage('Note saved successfully!', Colors.green);
       
       // CUSTOMIZE POST-SAVE ACTIONS HERE
