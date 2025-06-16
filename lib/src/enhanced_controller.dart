@@ -101,18 +101,24 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   void setStart(Offset? offset) {
+    print('SET START: $offset for mode ${_mode}');
     _start = offset;
     _markForRepaint();
+    notifyListeners(); // CRITICAL: Notify listeners to trigger repaint
   }
   
   void setEnd(Offset? offset) {
+    print('SET END: $offset for mode ${_mode}');
     _end = offset;
     _markForRepaint();
+    notifyListeners(); // CRITICAL: Notify listeners to trigger repaint
   }
   
   void setInProgress(bool inProgress) {
+    print('SET IN PROGRESS: $inProgress for mode ${_mode}');
     _inProgress = inProgress;
     _markForRepaint();
+    notifyListeners(); // CRITICAL: Notify listeners to trigger repaint
   }
 
   void _markForRepaint() {
@@ -189,21 +195,23 @@ class EnhancedImagePainterController extends ChangeNotifier {
 
   void undo() {
     if (_paintHistory.isNotEmpty) {
-      print('Undo: Removing last item from ${_paintHistory.length} items');
-      _paintHistory.removeLast();
+      print('UNDO: Before - History length: ${_paintHistory.length}');
+      final removedItem = _paintHistory.removeLast();
+      print('UNDO: Removed item with mode: ${removedItem.mode}');
+      print('UNDO: After - History length: ${_paintHistory.length}');
       _markForRepaint();
       notifyListeners();
-      print('Undo: Now have ${_paintHistory.length} items');
     } else {
-      print('Undo: No items to remove');
+      print('UNDO: No items in history to remove');
     }
   }
 
   void clear() {
-    print('Clear: Clearing all ${_paintHistory.length} items');
+    print('CLEAR: Before - History length: ${_paintHistory.length}');
     _paintHistory.clear();
     _offsets.clear();
     resetStartAndEnd();
+    print('CLEAR: After - History cleared, length: ${_paintHistory.length}');
     _markForRepaint();
     notifyListeners();
   }
@@ -254,11 +262,14 @@ class EnhancedImageCustomPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     _drawBackground(canvas, size);
     
+    // Draw all completed strokes
     for (final info in controller.paintHistory) {
       _drawPaintInfo(canvas, info);
     }
     
+    // Draw current stroke being drawn (real-time preview)
     if (controller.inProgress && controller.start != null && controller.end != null) {
+      print('Drawing preview for mode: ${controller.mode}, start: ${controller.start}, end: ${controller.end}');
       _drawCurrentStroke(canvas);
     }
     
@@ -482,21 +493,26 @@ class EnhancedImageCustomPainter extends CustomPainter {
 
   void _drawCurrentStroke(Canvas canvas) {
     final paint = Paint()
-      ..color = controller.color
+      ..color = controller.color.withOpacity(0.8) // Slightly transparent for preview
       ..strokeWidth = controller.strokeWidth
       ..style = controller.fill ? PaintingStyle.fill : PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
+    print('Drawing current stroke: ${controller.mode}');
+    
     switch (controller.mode) {
       case PaintMode.line:
+        print('Drawing line from ${controller.start} to ${controller.end}');
         canvas.drawLine(controller.start!, controller.end!, paint);
         break;
       case PaintMode.rect:
         final rect = Rect.fromPoints(controller.start!, controller.end!);
+        print('Drawing rect: $rect');
         canvas.drawRect(rect, paint);
         break;
       case PaintMode.circle:
         final radius = (controller.end! - controller.start!).distance;
+        print('Drawing circle at ${controller.start} with radius $radius');
         canvas.drawCircle(controller.start!, radius, paint);
         break;
       case PaintMode.freeStyle:
@@ -506,9 +522,11 @@ class EnhancedImageCustomPainter extends CustomPainter {
         }
         break;
       case PaintMode.arrow:
+        print('Drawing arrow from ${controller.start} to ${controller.end}');
         _drawArrow(canvas, controller.start!, controller.end!, paint);
         break;
       case PaintMode.dashedLine:
+        print('Drawing dashed line from ${controller.start} to ${controller.end}');
         _drawDashedLine(canvas, controller.start!, controller.end!, paint);
         break;
       default:

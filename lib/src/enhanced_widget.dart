@@ -263,10 +263,21 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   Widget _buildModeSelector() {
     return PopupMenuButton<PaintMode>(
       icon: Icon(_getModeIcon(_controller.mode)),
-      tooltip: 'Drawing Mode',
+      tooltip: _controller.mode == PaintMode.text 
+          ? 'Text Mode - Click canvas to add text'
+          : 'Drawing Mode: ${_getModeLabel(_controller.mode)}',
       onSelected: (mode) {
         _controller.setMode(mode);
-        // Don't automatically open text dialog - wait for user to click
+        // Show instruction for text mode
+        if (mode == PaintMode.text) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Text mode selected. Click on canvas to add text.'),
+              duration: Duration(seconds: 2),
+              backgroundColor: Colors.blue,
+            ),
+          );
+        }
       },
       itemBuilder: (context) => widget.config.enabledModes.map((mode) {
         return PopupMenuItem(
@@ -327,31 +338,77 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   Widget _buildStrokeSelector() {
     return PopupMenuButton(
-      icon: const Icon(Icons.brush),
-      tooltip: 'Brush Size',
+      icon: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Icon(Icons.brush),
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              padding: EdgeInsets.all(1),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${_controller.strokeWidth.toInt()}',
+                style: TextStyle(color: Colors.white, fontSize: 8),
+              ),
+            ),
+          ),
+        ],
+      ),
+      tooltip: 'Brush Size: ${_controller.strokeWidth.toInt()}',
       itemBuilder: (context) => [
         PopupMenuItem(
           enabled: false,
           child: StatefulBuilder(
-            builder: (context, setSliderState) => SizedBox(
-              width: 200,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Stroke Width: ${_controller.strokeWidth.toInt()}'),
-                  Slider(
-                    value: _controller.strokeWidth,
-                    min: 1,
-                    max: 10,
-                    divisions: 9,
-                    onChanged: (value) {
-                      _controller.setStrokeWidth(value);
-                      setSliderState(() {}); // Update the slider UI immediately
-                    },
-                  ),
-                ],
-              ),
-            ),
+            builder: (context, setSliderState) {
+              return AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  return SizedBox(
+                    width: 220,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Stroke Width: ${_controller.strokeWidth.toInt()}px',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 8),
+                        Slider(
+                          value: _controller.strokeWidth,
+                          min: 1,
+                          max: 20,
+                          divisions: 19,
+                          label: '${_controller.strokeWidth.toInt()}px',
+                          onChanged: (value) {
+                            _controller.setStrokeWidth(value);
+                            setSliderState(() {}); // Force immediate update
+                          },
+                        ),
+                        // Visual preview of stroke width
+                        Container(
+                          height: 30,
+                          child: Center(
+                            child: Container(
+                              width: 100,
+                              height: _controller.strokeWidth,
+                              decoration: BoxDecoration(
+                                color: _controller.color,
+                                borderRadius: BorderRadius.circular(_controller.strokeWidth / 2),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
           ),
         ),
       ],
@@ -361,6 +418,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void _handleInteractionStart(ScaleStartDetails details) {
     final offset = _transformationController.toScene(details.localFocalPoint);
     _controller.setStart(offset);
+    _controller.setEnd(offset); // Set initial end position same as start
+    _controller.setInProgress(true); // CRITICAL: Set inProgress immediately
     
     // Handle text mode specially
     if (_controller.mode == PaintMode.text) {
@@ -374,11 +433,19 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void _handleInteractionUpdate(ScaleUpdateDetails details) {
     final offset = _transformationController.toScene(details.localFocalPoint);
     
-    // Lighter throttling for shape modes to enable real-time preview
+    // Much lighter throttling for shape modes to ensure real-time preview
     final now = DateTime.now();
-    Duration threshold = _controller.mode == PaintMode.freeStyle ? _updateThreshold : Duration(milliseconds: 8);
+    Duration threshold;
+    switch (_controller.mode) {
+      case PaintMode.freeStyle:
+        threshold = _updateThreshold; // 16ms
+        break;
+      default:
+        threshold = Duration(milliseconds: 4); // Very light throttling for shapes
+    }
+    
     if (now.difference(_lastUpdateTime) < threshold) {
-      return; // Skip this update for performance
+      return;
     }
     _lastUpdateTime = now;
     
@@ -391,6 +458,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         _currentStroke.add(offset);
       }
     }
+    
+    // Always update end position for real-time preview
     _controller.setEnd(offset);
     
     if (_controller.mode == PaintMode.freeStyle) {
