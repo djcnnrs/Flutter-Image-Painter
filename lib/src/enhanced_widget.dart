@@ -194,7 +194,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             height: _actualHeight,
             child: CustomPaint(
               size: Size(_actualWidth, _actualHeight),
-              painter: EnhancedImagePainter(
+              painter: EnhancedImageCustomPainter(
                 controller: _controller,
                 size: Size(_actualWidth, _actualHeight),
               ),

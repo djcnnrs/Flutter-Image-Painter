@@ -25,14 +25,14 @@ Add your GitHub package:
 
 **Method A: FlutterFlow Dependencies UI**
 ```
-Package Name: image_painter
+Package Name: enhanced_image_painter
 Git URL: https://github.com/djcnnrs/Flutter-Image-Painter.git
 ```
 
 **Method B: Custom pubspec.yaml**
 ```yaml
 dependencies:
-  image_painter:
+  enhanced_image_painter:
     git:
       url: https://github.com/djcnnrs/Flutter-Image-Painter.git
       ref: main
@@ -246,7 +246,7 @@ Error: Package not found
 ```
 Error: Class not found
 ```
-**Solution**: Ensure you've imported `package:image_painter/enhanced_image_painter.dart`
+**Solution**: Ensure you've imported `package:enhanced_image_painter/enhanced_image_painter.dart`
 
 ### Save Function Issues
 ```

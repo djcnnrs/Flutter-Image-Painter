@@ -1,12 +1,12 @@
 // FlutterFlow Custom Widget - Copy this code
 // Widget Name: ImagePainterWidget
 // Parameters: width (double), height (double), bgImage (String?), jobRef (DocumentReference?)
-// Dependencies: Add the GitHub package URL in pubspec dependencies
+// Dependencies: enhanced_image_painter (GitHub), firebase_storage, cloud_firestore
 
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_painter/enhanced_image_painter.dart';
+import 'package:enhanced_image_painter/enhanced_image_painter.dart';
 
 class ImagePainterWidget extends StatefulWidget {
   const ImagePainterWidget({
@@ -27,10 +27,8 @@ class ImagePainterWidget extends StatefulWidget {
 }
 
 class ImagePainterWidgetState extends State<ImagePainterWidget> {
-  final GlobalKey<EnhancedImagePainterState> _painterKey = 
-      GlobalKey<EnhancedImagePainterState>();
-  
   bool _isSaving = false;
+  final GlobalKey<EnhancedImagePainterState> _painterKey = GlobalKey<EnhancedImagePainterState>();
   
   // CUSTOMIZE FEATURES HERE - Add/remove modes as needed
   static const enabledModes = [
@@ -109,7 +107,11 @@ class ImagePainterWidgetState extends State<ImagePainterWidget> {
 
       String storagePath;
       if (widget.jobRef != null) {
-        // Change this path as needed
+        final jobSnapshot = await widget.jobRef!.get();
+        final bidRef = jobSnapshot.get('bid_ref') as DocumentReference?;
+        final bidId = bidRef?.id ?? 'unknown_bid';
+        storagePath = 'businesses/$bidId/jobs/${widget.jobRef!.id}/notes/$fileName';
+      } else {
         storagePath = 'notes/$fileName';
       }
 
@@ -122,7 +124,11 @@ class ImagePainterWidgetState extends State<ImagePainterWidget> {
       
       final downloadUrl = await storageRef.getDownloadURL();
       
-      // Show success message      
+      if (widget.jobRef != null) {
+        await widget.jobRef!.update({
+          'attachments_ref': FieldValue.arrayUnion([downloadUrl])
+        });
+      }     
       _showMessage('Note saved successfully!', Colors.green);
       
       // CUSTOMIZE POST-SAVE ACTIONS HERE
@@ -140,13 +146,13 @@ class ImagePainterWidgetState extends State<ImagePainterWidget> {
 
   // CUSTOMIZE UNDO ACTION HERE
   void _handleUndo() {
-    // Widget handles undo internally, add custom logic here if needed
+    _painterKey.currentState?.undoLastAction();
   }
 
   // CUSTOMIZE CLEAR ACTION HERE  
   void _handleClear() {
+    _painterKey.currentState?.clearCanvas();
     _showMessage('Canvas cleared', Colors.blue);
-    // Widget handles clear internally, add custom logic here if needed
   }
 
   void _showMessage(String message, Color color) {

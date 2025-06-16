@@ -138,7 +138,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
   Future<Uint8List?> exportImage(Size size) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final painter = EnhancedImagePainter(controller: this, size: size);
+    final painter = EnhancedImageCustomPainter(controller: this, size: size);
     painter.paint(canvas, size);
     final picture = recorder.endRecording();
     final img = await picture.toImage(size.width.toInt(), size.height.toInt());
@@ -171,11 +171,11 @@ class EnhancedImagePainterController extends ChangeNotifier {
 }
 
 /// Enhanced Custom Painter with all drawing capabilities
-class EnhancedImagePainter extends CustomPainter {
+class EnhancedImageCustomPainter extends CustomPainter {
   final EnhancedImagePainterController controller;
   final Size size;
 
-  EnhancedImagePainter({required this.controller, required this.size});
+  EnhancedImageCustomPainter({required this.controller, required this.size});
 
   @override
   void paint(Canvas canvas, Size size) {
