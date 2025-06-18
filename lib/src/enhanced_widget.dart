@@ -69,6 +69,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   @override
   void initState() {
     super.initState();
+    print('🎨 ENHANCED IMAGE PAINTER INITIALIZED - Package is loading!');
     _controller = EnhancedImagePainterController();
     _transformationController = TransformationController();
     _textController = TextEditingController();
