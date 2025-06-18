@@ -70,28 +70,44 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void initState() {
     super.initState();
     print('🎨 ENHANCED IMAGE PAINTER INITIALIZED - Package is loading!');
-    _controller = EnhancedImagePainterController();
-    _transformationController = TransformationController();
-    _textController = TextEditingController();
+    print('📊 Widget config: ${widget.config.enabledModes}');
+    print('🎯 Default stroke width: ${widget.config.defaultStrokeWidth}');
     
-    // Set initial values from config
-    _controller.setColor(widget.config.defaultColor);
-    _controller.setStrokeWidth(widget.config.defaultStrokeWidth);
-    
-    _initializeCanvas();
+    try {
+      _controller = EnhancedImagePainterController();
+      print('✅ Controller created successfully');
+      
+      _transformationController = TransformationController();
+      _textController = TextEditingController();
+      print('✅ Additional controllers created');
+      
+      // Set initial values from config
+      _controller.setColor(widget.config.defaultColor);
+      _controller.setStrokeWidth(widget.config.defaultStrokeWidth);
+      print('✅ Initial values set');
+      
+      _initializeCanvas();
+      print('✅ Canvas initialization started');
+    } catch (e) {
+      print('❌ ERROR in initState: $e');
+      rethrow;
+    }
   }
 
   Future<void> _initializeCanvas() async {
+    print('🔄 Starting canvas initialization...');
     setState(() => _isLoading = true);
 
     try {
       await _setupBackground();
+      print('✅ Background setup completed');
     } catch (e) {
-      print('Error initializing canvas: $e');
+      print('❌ Error initializing canvas: $e');
       _actualWidth = widget.width;
       _actualHeight = widget.height;
       _controller.setBackgroundType(BackgroundType.blankCanvas);
     } finally {
+      print('🏁 Canvas initialization finished');
       setState(() => _isLoading = false);
     }
   }
