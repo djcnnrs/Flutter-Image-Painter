@@ -480,20 +480,23 @@ class EnhancedImageCustomPainter extends CustomPainter {
 
   void _drawCurrentStroke(Canvas canvas) {
     final paint = Paint()
-      ..color = controller.color.withOpacity(0.8) // Slightly transparent for preview
-      ..strokeWidth = controller.strokeWidth
+      ..color = controller.color.withOpacity(0.9) // More opaque for preview
+      ..strokeWidth = controller.strokeWidth + 1 // Slightly thicker for preview
       ..style = controller.fill ? PaintingStyle.fill : PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
     
     switch (controller.mode) {
       case PaintMode.line:
+        print('🟦 DRAWING LINE PREVIEW: ${controller.start} → ${controller.end}');
         canvas.drawLine(controller.start!, controller.end!, paint);
         break;
       case PaintMode.rect:
+        print('🟨 DRAWING RECT PREVIEW: ${controller.start} → ${controller.end}');
         final rect = Rect.fromPoints(controller.start!, controller.end!);
         canvas.drawRect(rect, paint);
         break;
       case PaintMode.circle:
+        print('🟣 DRAWING CIRCLE PREVIEW: ${controller.start} → ${controller.end}');
         final radius = (controller.end! - controller.start!).distance;
         canvas.drawCircle(controller.start!, radius, paint);
         break;
@@ -504,9 +507,11 @@ class EnhancedImageCustomPainter extends CustomPainter {
         }
         break;
       case PaintMode.arrow:
+        print('🔥 DRAWING ARROW PREVIEW: ${controller.start} → ${controller.end}');
         _drawArrow(canvas, controller.start!, controller.end!, paint);
         break;
       case PaintMode.dashedLine:
+        print('💙 DRAWING DASHED LINE PREVIEW: ${controller.start} → ${controller.end}');
         _drawDashedLine(canvas, controller.start!, controller.end!, paint);
         break;
       default:
@@ -518,11 +523,17 @@ class EnhancedImageCustomPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) {
     if (oldDelegate is! EnhancedImageCustomPainter) return true;
     
-    return controller.shouldRepaint ||
+    final shouldRepaint = controller.shouldRepaint ||
            oldDelegate.controller.paintHistory.length != controller.paintHistory.length ||
            oldDelegate.controller.inProgress != controller.inProgress ||
            oldDelegate.controller.start != controller.start ||
            oldDelegate.controller.end != controller.end ||
            oldDelegate.controller.offsets.length != controller.offsets.length;
+    
+    if (shouldRepaint && controller.inProgress) {
+      print('🔄 SHOULD REPAINT: inProgress=${controller.inProgress}, mode=${controller.mode}, start=${controller.start}, end=${controller.end}');
+    }
+    
+    return shouldRepaint;
   }
 }
