@@ -195,15 +195,54 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        return InteractiveViewer(
-          transformationController: _transformationController,
-          maxScale: 2.4,
-          minScale: 1,
-          panEnabled: _controller.mode == PaintMode.none,
-          scaleEnabled: _controller.mode == PaintMode.none,
-          onInteractionStart: _handleInteractionStart,
-          onInteractionUpdate: _handleInteractionUpdate,
-          onInteractionEnd: _handleInteractionEnd,
+        return GestureDetector(
+          onPanStart: (details) {
+            final offset = details.localPosition;
+            print('PAN START: Mode=${_controller.mode}, Offset=$offset');
+            _controller.setStart(offset);
+            _controller.setInProgress(true);
+            
+            if (_controller.mode == PaintMode.freeStyle) {
+              _controller.addOffsets(offset);
+            } else {
+              // For shape modes, set the end position same as start initially for immediate preview
+              _controller.setEnd(offset);
+            }
+            print('PAN START COMPLETE: inProgress=${_controller.inProgress}, start=${_controller.start}, end=${_controller.end}');
+          },
+          onPanUpdate: (details) {
+            final offset = details.localPosition;
+            
+            // Ensure we're still in progress
+            _controller.setInProgress(true);
+            
+            // Always update the end position for real-time preview
+            _controller.setEnd(offset);
+            
+            if (_controller.mode == PaintMode.freeStyle) {
+              _controller.addOffsets(offset);
+            }
+            
+            // Debug: Only log occasionally to avoid spam
+            if (DateTime.now().millisecondsSinceEpoch % 100 < 20) {
+              print('PAN UPDATE: Mode=${_controller.mode}, inProgress=${_controller.inProgress}, end=$offset');
+            }
+          },
+          onPanEnd: (details) {
+            print('PAN END: Mode=${_controller.mode}');
+            _controller.setInProgress(false);
+            
+            if (_controller.start != null && _controller.end != null) {
+              if (_controller.mode == PaintMode.freeStyle) {
+                _controller.addOffsets(null); // End stroke marker
+                _addFreeStylePoints();
+                _controller.offsets.clear();
+              } else if (_controller.mode != PaintMode.text) {
+                _addEndPoints();
+              }
+            }
+            _controller.resetStartAndEnd();
+          },
           child: Container(
             width: _actualWidth,
             height: _actualHeight,
@@ -371,55 +410,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         ),
       ],
     );
-  }
-
-  void _handleInteractionStart(ScaleStartDetails details) {
-    final offset = _transformationController.toScene(details.localFocalPoint);
-    print('START: Mode=${_controller.mode}, Offset=$offset');
-    _controller.setStart(offset);
-    _controller.setInProgress(true);  // Set in progress immediately
-    
-    if (_controller.mode == PaintMode.freeStyle) {
-      _controller.addOffsets(offset);
-    } else {
-      // For shape modes, set the end position same as start initially for immediate preview
-      _controller.setEnd(offset);
-    }
-    print('START COMPLETE: inProgress=${_controller.inProgress}, start=${_controller.start}, end=${_controller.end}');
-  }
-
-  void _handleInteractionUpdate(ScaleUpdateDetails details) {
-    final offset = _transformationController.toScene(details.localFocalPoint);
-    
-    // Ensure we're still in progress
-    _controller.setInProgress(true);
-    
-    // Always update the end position for real-time preview
-    _controller.setEnd(offset);
-    
-    if (_controller.mode == PaintMode.freeStyle) {
-      _controller.addOffsets(offset);
-    }
-    
-    // Debug: Only log occasionally to avoid spam
-    if (DateTime.now().millisecondsSinceEpoch % 100 < 20) {
-      print('UPDATE: Mode=${_controller.mode}, inProgress=${_controller.inProgress}, start=${_controller.start}, end=$offset');
-    }
-  }
-
-  void _handleInteractionEnd(ScaleEndDetails details) {
-    _controller.setInProgress(false);
-    
-    if (_controller.start != null && _controller.end != null) {
-      if (_controller.mode == PaintMode.freeStyle) {
-        _controller.addOffsets(null); // End stroke marker
-        _addFreeStylePoints();
-        _controller.offsets.clear();
-      } else if (_controller.mode != PaintMode.text) {
-        _addEndPoints();
-      }
-    }
-    _controller.resetStartAndEnd();
   }
 
   void _addEndPoints() {
