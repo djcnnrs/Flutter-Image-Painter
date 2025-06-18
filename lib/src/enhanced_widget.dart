@@ -70,8 +70,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void initState() {
     super.initState();
     print('🎨 ENHANCED IMAGE PAINTER INITIALIZED - Package is loading!');
-    print('📊 Widget config: ${widget.config.enabledModes}');
-    print('🎯 Default stroke width: ${widget.config.defaultStrokeWidth}');
     
     try {
       _controller = EnhancedImagePainterController();
@@ -86,8 +84,12 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _controller.setStrokeWidth(widget.config.defaultStrokeWidth);
       print('✅ Initial values set');
       
-      _initializeCanvas();
-      print('✅ Canvas initialization started');
+      // Skip async initialization for now - use simple setup
+      _actualWidth = widget.width;
+      _actualHeight = widget.height;
+      _controller.setBackgroundType(BackgroundType.blankCanvas);
+      print('✅ Simple canvas setup completed');
+      
     } catch (e) {
       print('❌ ERROR in initState: $e');
       rethrow;
@@ -187,16 +189,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   @override
   Widget build(BuildContext context) {
     print('🔥 EnhancedImagePainter build() called - Widget is rendering!');
-    
-    if (_isLoading) {
-      print('📡 Widget is loading...');
-      return SizedBox(
-        width: widget.width,
-        height: widget.height,
-        child: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
     print('🎨 Building canvas - Width: $_actualWidth, Height: $_actualHeight');
     print('🎯 Current mode: ${_controller.mode}');
 
@@ -214,9 +206,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   Widget _buildCanvas() {
+    print('🖼️ Building canvas widget...');
+    
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
+        print('🔄 AnimatedBuilder rebuilding...');
+        
         return GestureDetector(
           onPanStart: (details) {
             final offset = details.localPosition;
@@ -268,6 +264,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           child: Container(
             width: _actualWidth,
             height: _actualHeight,
+            color: Colors.white,
             child: RepaintBoundary(
               child: CustomPaint(
                 size: Size(_actualWidth, _actualHeight),
