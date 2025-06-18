@@ -170,13 +170,19 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   @override
   Widget build(BuildContext context) {
+    print('🔥 EnhancedImagePainter build() called - Widget is rendering!');
+    
     if (_isLoading) {
+      print('📡 Widget is loading...');
       return SizedBox(
         width: widget.width,
         height: widget.height,
         child: const Center(child: CircularProgressIndicator()),
       );
     }
+
+    print('🎨 Building canvas - Width: $_actualWidth, Height: $_actualHeight');
+    print('🎯 Current mode: ${_controller.mode}');
 
     return Container(
       width: _actualWidth,
@@ -314,24 +320,29 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       icon: Icon(_getModeIcon(_controller.mode)),
       tooltip: 'Drawing Mode: ${_getModeLabel(_controller.mode)}',
       onSelected: (mode) {
+        print('🎯 MODE SELECTED: $mode');
         _controller.setMode(mode);
         // Open text dialog immediately when text mode is selected, just like original
         if (mode == PaintMode.text) {
+          print('📝 Opening text dialog...');
           _openTextDialog();
         }
       },
-      itemBuilder: (context) => widget.config.enabledModes.map((mode) {
-        return PopupMenuItem(
-          value: mode,
-          child: Row(
-            children: [
-              Icon(_getModeIcon(mode)),
-              SizedBox(width: 8),
-              Text(_getModeLabel(mode)),
-            ],
-          ),
-        );
-      }).toList(),
+      itemBuilder: (context) {
+        print('🔧 Building mode selector popup...');
+        return widget.config.enabledModes.map((mode) {
+          return PopupMenuItem(
+            value: mode,
+            child: Row(
+              children: [
+                Icon(_getModeIcon(mode)),
+                SizedBox(width: 8),
+                Text(_getModeLabel(mode)),
+              ],
+            ),
+          );
+        }).toList();
+      },
     );
   }
 
