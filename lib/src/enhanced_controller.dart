@@ -526,6 +526,12 @@ class EnhancedImageCustomPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    // Always repaint during active drawing for real-time preview
+    if (controller.inProgress) {
+      print('🔥 FORCING REPAINT: inProgress=true, mode=${controller.mode}');
+      return true;
+    }
+    
     if (oldDelegate is! EnhancedImageCustomPainter) return true;
     
     final shouldRepaint = controller.shouldRepaint ||
@@ -535,8 +541,8 @@ class EnhancedImageCustomPainter extends CustomPainter {
            oldDelegate.controller.end != controller.end ||
            oldDelegate.controller.offsets.length != controller.offsets.length;
     
-    if (shouldRepaint && controller.inProgress) {
-      print('🔄 SHOULD REPAINT: inProgress=${controller.inProgress}, mode=${controller.mode}, start=${controller.start}, end=${controller.end}');
+    if (shouldRepaint) {
+      print('🔄 SHOULD REPAINT: inProgress=${controller.inProgress}, mode=${controller.mode}');
     }
     
     return shouldRepaint;
