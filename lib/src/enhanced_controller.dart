@@ -31,7 +31,7 @@ class PaintInfo {
 class EnhancedImagePainterController extends ChangeNotifier {
   PaintMode _mode = PaintMode.freeStyle;
   Color _color = Colors.black;
-  double _strokeWidth = 4.0;
+  double _strokeWidth = 2.0;
   bool _fill = false;
   final List<PaintInfo> _paintHistory = [];
   final List<Offset?> _offsets = [];
@@ -256,6 +256,7 @@ class EnhancedImageCustomPainter extends CustomPainter {
     
     // Draw current stroke being drawn (real-time preview)
     if (controller.inProgress && controller.start != null && controller.end != null) {
+      print('DRAWING PREVIEW: Mode=${controller.mode}, start=${controller.start}, end=${controller.end}');
       _drawCurrentStroke(canvas);
     }
     

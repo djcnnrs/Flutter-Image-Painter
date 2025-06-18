@@ -20,7 +20,7 @@ class EnhancedImagePainterConfig {
 
   const EnhancedImagePainterConfig({
     this.enabledModes = const [PaintMode.freeStyle, PaintMode.line, PaintMode.rect, PaintMode.circle, PaintMode.text],
-    this.defaultStrokeWidth = 4.0,
+    this.defaultStrokeWidth = 2.0,
     this.defaultColor = Colors.red,
     this.showColorTool = true,
     this.showStrokeTool = true,
@@ -364,52 +364,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       itemBuilder: (context) => [
         PopupMenuItem(
           enabled: false,
-          child: StatefulBuilder(
-            builder: (context, setSliderState) {
-              return AnimatedBuilder(
-                animation: _controller,
-                builder: (context, child) {
-                  return SizedBox(
-                    width: 220,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Stroke Width: ${_controller.strokeWidth.toInt()}px',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        SizedBox(height: 8),
-                        Slider(
-                          value: _controller.strokeWidth,
-                          min: 2,
-                          max: 40,
-                          divisions: 19,
-                          label: '${_controller.strokeWidth.toInt()}px',
-                          onChanged: (value) {
-                            _controller.setStrokeWidth(value);
-                            setSliderState(() {}); // Force immediate update
-                          },
-                        ),
-                        // Visual preview of stroke width
-                        Container(
-                          height: 30,
-                          child: Center(
-                            child: Container(
-                              width: 100,
-                              height: _controller.strokeWidth,
-                              decoration: BoxDecoration(
-                                color: _controller.color,
-                                borderRadius: BorderRadius.circular(_controller.strokeWidth / 2),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              );
-            },
+          child: _StrokeSliderWidget(
+            controller: _controller,
           ),
         ),
       ],
@@ -418,21 +374,35 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   void _handleInteractionStart(ScaleStartDetails details) {
     final offset = _transformationController.toScene(details.localFocalPoint);
+    print('START: Mode=${_controller.mode}, Offset=$offset');
     _controller.setStart(offset);
-    _controller.addOffsets(offset);
+    _controller.setInProgress(true);  // Set in progress immediately
+    
+    if (_controller.mode == PaintMode.freeStyle) {
+      _controller.addOffsets(offset);
+    } else {
+      // For shape modes, set the end position same as start initially for immediate preview
+      _controller.setEnd(offset);
+    }
+    print('START COMPLETE: inProgress=${_controller.inProgress}, start=${_controller.start}, end=${_controller.end}');
   }
 
   void _handleInteractionUpdate(ScaleUpdateDetails details) {
     final offset = _transformationController.toScene(details.localFocalPoint);
     
+    // Ensure we're still in progress
     _controller.setInProgress(true);
-    if (_controller.start == null) {
-      _controller.setStart(offset);
-    }
+    
+    // Always update the end position for real-time preview
     _controller.setEnd(offset);
     
     if (_controller.mode == PaintMode.freeStyle) {
       _controller.addOffsets(offset);
+    }
+    
+    // Debug: Only log occasionally to avoid spam
+    if (DateTime.now().millisecondsSinceEpoch % 100 < 20) {
+      print('UPDATE: Mode=${_controller.mode}, inProgress=${_controller.inProgress}, start=${_controller.start}, end=$offset');
     }
   }
 
@@ -537,5 +507,69 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       case PaintMode.arrow: return 'Arrow';
       case PaintMode.dashedLine: return 'Dashed Line';
     }
+  }
+}
+
+/// Separate stateful widget for stroke slider to handle state properly
+class _StrokeSliderWidget extends StatefulWidget {
+  final EnhancedImagePainterController controller;
+  
+  const _StrokeSliderWidget({required this.controller});
+  
+  @override
+  _StrokeSliderWidgetState createState() => _StrokeSliderWidgetState();
+}
+
+class _StrokeSliderWidgetState extends State<_StrokeSliderWidget> {
+  late double _currentStrokeWidth;
+  
+  @override
+  void initState() {
+    super.initState();
+    _currentStrokeWidth = widget.controller.strokeWidth;
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 220,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Stroke Width: ${_currentStrokeWidth.toInt()}px',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          Slider(
+            value: _currentStrokeWidth,
+            min: 2,
+            max: 20,
+            divisions: 18,
+            label: '${_currentStrokeWidth.toInt()}px',
+            onChanged: (value) {
+              setState(() {
+                _currentStrokeWidth = value;
+              });
+              widget.controller.setStrokeWidth(value);
+            },
+          ),
+          // Visual preview of stroke width
+          Container(
+            height: 30,
+            child: Center(
+              child: Container(
+                width: 100,
+                height: _currentStrokeWidth,
+                decoration: BoxDecoration(
+                  color: widget.controller.color,
+                  borderRadius: BorderRadius.circular(_currentStrokeWidth / 2),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
