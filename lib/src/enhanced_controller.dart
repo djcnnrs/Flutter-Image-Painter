@@ -243,7 +243,9 @@ class EnhancedImageCustomPainter extends CustomPainter {
   final EnhancedImagePainterController controller;
   final Size size;
 
-  EnhancedImageCustomPainter({required this.controller, required this.size});
+  EnhancedImageCustomPainter({required this.controller, required this.size}) {
+    print('🎨 PAINTER CONSTRUCTOR: inProgress=${controller.inProgress}, start=${controller.start}, end=${controller.end}');
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
