@@ -265,13 +265,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             width: _actualWidth,
             height: _actualHeight,
             color: Colors.white,
-            child: RepaintBoundary(
-              child: CustomPaint(
+            child: CustomPaint(
+              size: Size(_actualWidth, _actualHeight),
+              painter: EnhancedImageCustomPainter(
+                controller: _controller,
                 size: Size(_actualWidth, _actualHeight),
-                painter: EnhancedImageCustomPainter(
-                  controller: _controller,
-                  size: Size(_actualWidth, _actualHeight),
-                ),
               ),
             ),
           ),
