@@ -255,9 +255,12 @@ class EnhancedImageCustomPainter extends CustomPainter {
     }
     
     // Draw current stroke being drawn (real-time preview)
+    print('🔍 PAINT METHOD DEBUG: inProgress=${controller.inProgress}, start=${controller.start}, end=${controller.end}');
     if (controller.inProgress && controller.start != null && controller.end != null) {
-      print('DRAWING PREVIEW: Mode=${controller.mode}, start=${controller.start}, end=${controller.end}');
+      print('✅ DRAWING PREVIEW: Mode=${controller.mode}, start=${controller.start}, end=${controller.end}');
       _drawCurrentStroke(canvas);
+    } else {
+      print('❌ PREVIEW CONDITION FAILED: inProgress=${controller.inProgress}, start=${controller.start}, end=${controller.end}');
     }
     
     // Clear the repaint flag after painting
@@ -480,8 +483,8 @@ class EnhancedImageCustomPainter extends CustomPainter {
 
   void _drawCurrentStroke(Canvas canvas) {
     final paint = Paint()
-      ..color = controller.color.withOpacity(0.9) // More opaque for preview
-      ..strokeWidth = controller.strokeWidth + 1 // Slightly thicker for preview
+      ..color = Colors.red.withOpacity(0.8) // Bright red for testing preview visibility
+      ..strokeWidth = controller.strokeWidth + 2 // Much thicker for preview
       ..style = controller.fill ? PaintingStyle.fill : PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
     
