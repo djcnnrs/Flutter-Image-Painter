@@ -204,12 +204,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onTapDown: (details) {
             final offset = details.localPosition;
             
+            // Always check for text first (in any mode)
+            final textIndex = _findTextAtPosition(offset);
+            
             // Handle text mode
             if (_controller.mode == PaintMode.text) {
-              // Check if clicking on existing text
-              final textIndex = _findTextAtPosition(offset);
               if (textIndex != null) {
-                // Prepare for potential drag, but don't open dialog yet
+                // Clicking on existing text - prepare for potential drag or edit
                 _dragStartPosition = offset;
                 _draggingTextIndex = textIndex;
                 return;
@@ -221,19 +222,24 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               }
             }
             
-            // Check if starting to drag text (in non-text modes)
-            final textIndex = _findTextAtPosition(offset);
+            // Handle non-text modes
             if (textIndex != null) {
+              // Clicking on text in non-text mode - prepare for potential drag
               _dragStartPosition = offset;
               _draggingTextIndex = textIndex;
+              // Don't start drawing gestures when clicking on text
+              return;
             }
+            
+            // No text clicked - clear any text drag state
+            _draggingTextIndex = null;
+            _dragStartPosition = null;
           },
           onTapUp: (details) {
             final offset = details.localPosition;
             
-            // If we were potentially dragging but didn't actually drag, treat as tap
+            // If we were potentially dragging text but didn't actually drag
             if (_draggingTextIndex != null && !_isDraggingText) {
-              // This was just a tap on text, not a drag
               if (_controller.mode == PaintMode.text) {
                 // In text mode, single tap on text opens edit dialog
                 _editTextAtIndex(_draggingTextIndex!);
@@ -241,7 +247,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               // Clear drag state
               _draggingTextIndex = null;
               _dragStartPosition = null;
-              return;
             }
             
             // Handle potential text editing (double-click detection) for all modes
@@ -252,19 +257,19 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onPanStart: (details) {
             final offset = details.localPosition;
             
-            // Check if we should start dragging text (works in any mode including text mode)
+            // If we have a potential text drag, just mark that we're starting a pan
             if (_draggingTextIndex != null && _dragStartPosition != null) {
-              final dragDistance = (_dragStartPosition! - offset).distance;
-              if (dragDistance > 5.0) { // Threshold to differentiate tap from drag
-                _isDraggingText = true;
-                setState(() {
-                  _repositionPreviewPosition = offset;
-                });
-                return;
-              }
+              // Don't set _isDraggingText yet - wait for onPanUpdate to detect actual movement
+              return;
             }
             
-            // Skip other pan gestures in text mode (but not text dragging)
+            // Only allow drawing gestures if we're not potentially dragging text
+            if (_draggingTextIndex != null) {
+              // We're on text but starting a pan - wait to see if it's a drag
+              return;
+            }
+            
+            // Skip drawing gestures in text mode when not dragging text
             if (_controller.mode == PaintMode.text) {
               return;
             }
@@ -282,11 +287,28 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onPanUpdate: (details) {
             final offset = details.localPosition;
             
-            // Handle text dragging
+            // Check if we should start dragging text (detect actual movement here)
+            if (_draggingTextIndex != null && !_isDraggingText && _dragStartPosition != null) {
+              final dragDistance = (_dragStartPosition! - offset).distance;
+              if (dragDistance > 5.0) { // Threshold to differentiate tap from drag
+                _isDraggingText = true;
+                setState(() {
+                  _repositionPreviewPosition = offset;
+                });
+                return;
+              }
+            }
+            
+            // Handle ongoing text dragging
             if (_isDraggingText && _draggingTextIndex != null) {
               setState(() {
                 _repositionPreviewPosition = offset;
               });
+              return;
+            }
+            
+            // Don't update drawing if we're potentially dragging text
+            if (_draggingTextIndex != null) {
               return;
             }
             
