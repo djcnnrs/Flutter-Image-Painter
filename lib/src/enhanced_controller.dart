@@ -42,6 +42,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
   Color _backgroundColor = Colors.white;
   ui.Image? _backgroundImage;
   bool _shouldRepaint = false;
+  bool _isExporting = false;
 
   // Getters
   PaintMode get mode => _mode;
@@ -204,36 +205,41 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   Future<Uint8List?> exportImage(Size size, {bool autoCrop = false}) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final painter = EnhancedImageCustomPainter(controller: this, size: size);
-    painter.paint(canvas, size);
-    final picture = recorder.endRecording();
-    
-    if (autoCrop && _paintHistory.isNotEmpty) {
-      // Calculate bounding box of all drawn content
-      final bounds = _calculateContentBounds();
-      if (bounds != null) {
-        // Add some padding around the content
-        const padding = 20.0;
-        final cropRect = Rect.fromLTRB(
-          math.max(0, bounds.left - padding),
-          math.max(0, bounds.top - padding),
-          math.min(size.width, bounds.right + padding),
-          math.min(size.height, bounds.bottom + padding),
-        );
-        
-        final img = await picture.toImage(size.width.toInt(), size.height.toInt());
-        final croppedImg = await _cropImage(img, cropRect);
-        final byteData = await croppedImg.toByteData(format: ui.ImageByteFormat.png);
-        return byteData?.buffer.asUint8List();
+    _isExporting = true;
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final painter = EnhancedImageCustomPainter(controller: this, size: size);
+      painter.paint(canvas, size);
+      final picture = recorder.endRecording();
+      
+      if (autoCrop && _paintHistory.isNotEmpty) {
+        // Calculate bounding box of all drawn content
+        final bounds = _calculateContentBounds();
+        if (bounds != null) {
+          // Add some padding around the content
+          const padding = 20.0;
+          final cropRect = Rect.fromLTRB(
+            math.max(0, bounds.left - padding),
+            math.max(0, bounds.top - padding),
+            math.min(size.width, bounds.right + padding),
+            math.min(size.height, bounds.bottom + padding),
+          );
+          
+          final img = await picture.toImage(size.width.toInt(), size.height.toInt());
+          final croppedImg = await _cropImage(img, cropRect);
+          final byteData = await croppedImg.toByteData(format: ui.ImageByteFormat.png);
+          return byteData?.buffer.asUint8List();
+        }
       }
+      
+      // Fallback to full size
+      final img = await picture.toImage(size.width.toInt(), size.height.toInt());
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } finally {
+      _isExporting = false;
     }
-    
-    // Fallback to full size
-    final img = await picture.toImage(size.width.toInt(), size.height.toInt());
-    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-    return byteData?.buffer.asUint8List();
   }
 
   Rect? _calculateContentBounds() {
@@ -337,8 +343,10 @@ class EnhancedImageCustomPainter extends CustomPainter {
       _drawCurrentStroke(canvas);
     }
     
-    // Clear the repaint flag after painting
-    controller._clearRepaintFlag();
+    // Only clear repaint flag if not exporting
+    if (!controller._isExporting) {
+      controller._clearRepaintFlag();
+    }
   }
 
   void _drawBackground(Canvas canvas, Size size) {
@@ -559,7 +567,7 @@ class EnhancedImageCustomPainter extends CustomPainter {
   void _drawCurrentStroke(Canvas canvas) {
     final paint = Paint()
       ..color = controller.color.withOpacity(0.9)
-      ..strokeWidth = controller.strokeWidth + 1
+      ..strokeWidth = controller.strokeWidth // Same stroke width as final
       ..style = controller.fill ? PaintingStyle.fill : PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
     

@@ -202,8 +202,10 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       animation: _controller,
       builder: (context, child) {
         return GestureDetector(
-          onTap: () {
+          onTapUp: (details) {
             // Handle potential text editing (double-click detection)
+            _lastTapPosition = details.localPosition;
+            _lastTapTime = DateTime.now();
             _handleTapForTextEditing();
           },
           onPanStart: (details) {
@@ -482,7 +484,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     if (_editingTextIndex != null) {
       _pendingTextPosition = _lastTapPosition;
       _updateExistingText();
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      Navigator.of(context).popUntil((route) => route.isFirst); // Close any open dialogs
       return;
     }
     
@@ -627,16 +629,26 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   /// Show instructions for text positioning (used for both new text and repositioning)
   void _showTextPositionInstructions({VoidCallback? onCancel}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Tap anywhere to place the text at that location'),
-        duration: Duration(seconds: 4),
-        action: onCancel != null 
-          ? SnackBarAction(
-              label: 'Cancel',
-              onPressed: onCancel,
-            )
-          : null,
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        title: Text('Text Mode'),
+        content: Text('Tap anywhere on the canvas to place the text at that location'),
+        actions: [
+          if (onCancel != null)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                onCancel();
+              },
+              child: Text('Cancel'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK'),
+          ),
+        ],
       ),
     );
   }
