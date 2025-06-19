@@ -246,7 +246,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
       return byteData?.buffer.asUint8List();
     } catch (e) {
-      debugPrint('Export error: $e');
+      print('Export error: $e');
       return null;
     } finally {
       _isExporting = false;
@@ -332,7 +332,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       _backgroundImage = await completer.future;
       notifyListeners();
     } catch (e) {
-      debugPrint('Failed to load background image: $e');
+      print('Failed to load background image: $e');
     }
   }
 

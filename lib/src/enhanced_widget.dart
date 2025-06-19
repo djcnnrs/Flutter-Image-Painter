@@ -93,7 +93,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _initializeCanvas();
       
     } catch (e) {
-      debugPrint('Error in initState: $e');
+      print('Error in initState: $e');
       rethrow;
     }
   }
@@ -104,7 +104,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     try {
       await _setupBackground(widget.bgImage);
     } catch (e) {
-      debugPrint('Error initializing canvas: $e');
+      print('Error initializing canvas: $e');
       _actualWidth = widget.width;
       _actualHeight = widget.height;
       _controller.setBackgroundType(BackgroundType.blankCanvas);
@@ -151,8 +151,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   /// Public method to export the image with auto-crop enabled by default
-  Future<Uint8List?> exportImage({bool autoCrop = true}) async {
-    return await _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: autoCrop);
+  Future<Uint8List?> exportImage() async {
+    return _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: true);
+  }
+  
+  /// Public method to export the image without auto-crop
+  Future<Uint8List?> exportImageFullSize() async {
+    return _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: false);
   }
 
   /// Public method to update background dynamically
@@ -165,7 +170,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _controller.markForRepaint();
       _controller.notifyListeners();
     } catch (e) {
-      debugPrint('Error updating background: $e');
+      print('Error updating background: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -238,7 +243,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _controller.notifyListeners();
       
     } catch (e) {
-      debugPrint('Error updating background: $e');
+      print('Error updating background: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -427,39 +432,38 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             }
             _controller.resetStartAndEnd();
           },
-          child: ClipRect(          child: ClipRect(
-            child: Container(
-              width: _actualWidth,
-              height: _actualHeight,
-              color: Colors.white,
-              child: Stack(
-                children: [
-                  CustomPaint(
+          child: ClipRect(          child: Container(
+            width: _actualWidth,
+            height: _actualHeight,
+            color: Colors.white,
+            clipBehavior: Clip.hardEdge, // Alternative to ClipRect
+            child: Stack(
+              children: [
+                CustomPaint(
+                  size: Size(_actualWidth, _actualHeight),
+                  painter: EnhancedImageCustomPainter(
+                    controller: _controller,
                     size: Size(_actualWidth, _actualHeight),
-                    painter: EnhancedImageCustomPainter(
-                      controller: _controller,
-                      size: Size(_actualWidth, _actualHeight),
-                    ),
                   ),
-                  // Show text dragging preview
-                  if (_isDraggingText && _repositionPreviewPosition != null && _draggingTextIndex != null)
-                    Positioned(
-                      left: _repositionPreviewPosition!.dx,
-                      top: _repositionPreviewPosition!.dy,
-                      child: Opacity(
-                        opacity: 0.7,
-                        child: Text(
-                          _getTextBeingDragged(),
-                          style: TextStyle(
-                            color: _controller.paintHistory[_draggingTextIndex!].color,
-                            fontSize: _controller.paintHistory[_draggingTextIndex!].strokeWidth * 4,
-                            decoration: TextDecoration.none,
-                          ),
+                ),
+                // Show text dragging preview
+                if (_isDraggingText && _repositionPreviewPosition != null && _draggingTextIndex != null)
+                  Positioned(
+                    left: _repositionPreviewPosition!.dx,
+                    top: _repositionPreviewPosition!.dy,
+                    child: Opacity(
+                      opacity: 0.7,
+                      child: Text(
+                        _getTextBeingDragged(),
+                        style: TextStyle(
+                          color: _controller.paintHistory[_draggingTextIndex!].color,
+                          fontSize: _controller.paintHistory[_draggingTextIndex!].strokeWidth * 4,
+                          decoration: TextDecoration.none,
                         ),
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
           ),
@@ -833,7 +837,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       }
       
     } catch (e) {
-      debugPrint('Error updating text content: $e');
+      print('Error updating text content: $e');
     } finally {
       _cleanupTextEditing();
     }
@@ -872,7 +876,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       }
       
     } catch (e) {
-      debugPrint('Error updating text position: $e');
+      print('Error updating text position: $e');
     } finally {
       _cleanupTextEditing();
     }
