@@ -756,7 +756,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _controller.paintHistory[_editingTextIndex!] = updatedInfo;
       
       // Force immediate repaint
-      _controller._markForRepaint();
+      _controller.markForRepaint();
       _controller.notifyListeners();
       
       // Also force widget rebuild

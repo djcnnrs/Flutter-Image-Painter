@@ -116,8 +116,12 @@ class EnhancedImagePainterController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _markForRepaint() {
+  void markForRepaint() {
     _shouldRepaint = true;
+  }
+
+  void _markForRepaint() {
+    markForRepaint();
   }
 
   void _clearRepaintFlag() {
@@ -206,7 +210,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
 
   Future<Uint8List?> exportImage(Size size, {bool autoCrop = false}) async {
     _isExporting = true;
-    _markForRepaint(); // Ensure everything is marked for rendering
+    markForRepaint(); // Ensure everything is marked for rendering
     
     try {
       final recorder = ui.PictureRecorder();
