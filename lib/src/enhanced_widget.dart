@@ -15,9 +15,7 @@ class EnhancedImagePainterConfig {
   final bool toolbarAtTop;
   final Color? toolbarBackgroundColor;
   final bool enableAutoCrop;
-  final VoidCallback? onSave; // Simplified to VoidCallback 
-  final VoidCallback? onUndo;
-  final VoidCallback? onClear;
+  // Removed callback parameters - FlutterFlow doesn't support callbacks in config
 
   EnhancedImagePainterConfig({
     this.enabledModes = const [PaintMode.freeStyle, PaintMode.line, PaintMode.rect, PaintMode.circle, PaintMode.text],
@@ -29,9 +27,7 @@ class EnhancedImagePainterConfig {
     this.toolbarAtTop = false,
     this.toolbarBackgroundColor,
     this.enableAutoCrop = false,
-    this.onSave,
-    this.onUndo,
-    this.onClear,
+    // No callback parameters for FlutterFlow compatibility
   });
 }
 
@@ -158,6 +154,15 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: false);
   }
 
+  /// Export image with auto-crop (if enabled in config)
+  Future<Uint8List?> exportImageCropped() async {
+    if (widget.config.enableAutoCrop) {
+      return await _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: true);
+    } else {
+      return await _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: false);
+    }
+  }
+
   /// Public method to update background dynamically
   Future<void> updateBackground(String? bgImage) async {
     setState(() => _isLoading = true);
@@ -177,13 +182,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   /// Public method to undo last action
   void undoLastAction() {
     _controller.undo();
-    if (widget.config.onUndo != null) widget.config.onUndo!();
+    // Removed callback - FlutterFlow doesn't support callbacks
   }
 
   /// Public method to clear canvas
   void clearCanvas() {
     _controller.clear();
-    if (widget.config.onClear != null) widget.config.onClear!();
+    // Removed callback - FlutterFlow doesn't support callbacks
     
     // Show feedback message
     ScaffoldMessenger.of(context).showSnackBar(
@@ -502,9 +507,34 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               ),
               IconButton(
                 icon: Icon(Icons.save, color: _controller.paintHistory.isEmpty ? Colors.grey : Colors.white),
-                onPressed: _controller.paintHistory.isEmpty ? null : () {
-                  if (widget.config.onSave != null) {
-                    widget.config.onSave!();
+                onPressed: _controller.paintHistory.isEmpty ? null : () async {
+                  // FlutterFlow compatible: Direct save functionality
+                  try {
+                    final bytes = await exportImageCropped();
+                    if (bytes != null) {
+                      print('Image exported successfully: ${bytes.length} bytes');
+                      // Show success feedback
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Image saved successfully!'),
+                            backgroundColor: Colors.green,
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    print('Error saving image: $e');
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error saving image'),
+                          backgroundColor: Colors.red,
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
                   }
                 },
                 tooltip: _controller.paintHistory.isEmpty ? 'Canvas is empty' : 'Save',

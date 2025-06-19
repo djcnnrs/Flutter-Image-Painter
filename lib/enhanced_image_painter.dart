@@ -4,3 +4,4 @@
 export 'src/enhanced_controller.dart';
 export 'src/enhanced_widget.dart';
 export 'src/simple_test_widget.dart';
+export 'flutterflow_compatible.dart';
