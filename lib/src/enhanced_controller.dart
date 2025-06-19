@@ -48,7 +48,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
   Color get color => _color;
   double get strokeWidth => _strokeWidth;
   bool get fill => _fill;
-  List<PaintInfo> get paintHistory => List.unmodifiable(_paintHistory);
+  List<PaintInfo> get paintHistory => _paintHistory; // Make directly accessible for editing
   List<Offset?> get offsets => _offsets;
   Offset? get start => _start;
   Offset? get end => _end;
@@ -203,15 +203,93 @@ class EnhancedImagePainterController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<Uint8List?> exportImage(Size size) async {
+  Future<Uint8List?> exportImage(Size size, {bool autoCrop = false}) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final painter = EnhancedImageCustomPainter(controller: this, size: size);
     painter.paint(canvas, size);
     final picture = recorder.endRecording();
+    
+    if (autoCrop && _paintHistory.isNotEmpty) {
+      // Calculate bounding box of all drawn content
+      final bounds = _calculateContentBounds();
+      if (bounds != null) {
+        // Add some padding around the content
+        const padding = 20.0;
+        final cropRect = Rect.fromLTRB(
+          math.max(0, bounds.left - padding),
+          math.max(0, bounds.top - padding),
+          math.min(size.width, bounds.right + padding),
+          math.min(size.height, bounds.bottom + padding),
+        );
+        
+        final img = await picture.toImage(size.width.toInt(), size.height.toInt());
+        final croppedImg = await _cropImage(img, cropRect);
+        final byteData = await croppedImg.toByteData(format: ui.ImageByteFormat.png);
+        return byteData?.buffer.asUint8List();
+      }
+    }
+    
+    // Fallback to full size
     final img = await picture.toImage(size.width.toInt(), size.height.toInt());
     final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
     return byteData?.buffer.asUint8List();
+  }
+
+  Rect? _calculateContentBounds() {
+    if (_paintHistory.isEmpty) return null;
+    
+    double minX = double.infinity;
+    double minY = double.infinity;
+    double maxX = double.negativeInfinity;
+    double maxY = double.negativeInfinity;
+    
+    for (final info in _paintHistory) {
+      for (final offset in info.offsets) {
+        if (offset != null) {
+          minX = math.min(minX, offset.dx);
+          minY = math.min(minY, offset.dy);
+          maxX = math.max(maxX, offset.dx);
+          maxY = math.max(maxY, offset.dy);
+        }
+      }
+      
+      // For text, account for text size
+      if (info.mode == PaintMode.text && info.offsets.isNotEmpty && info.text != null) {
+        final textSize = _estimateTextSize(info.text!, info.strokeWidth * 4);
+        final offset = info.offsets[0]!;
+        maxX = math.max(maxX, offset.dx + textSize.width);
+        maxY = math.max(maxY, offset.dy + textSize.height);
+      }
+    }
+    
+    if (minX == double.infinity) return null;
+    
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
+  Size _estimateTextSize(String text, double fontSize) {
+    // Rough estimation of text size
+    return Size(text.length * fontSize * 0.6, fontSize);
+  }
+
+  Future<ui.Image> _cropImage(ui.Image original, Rect cropRect) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    
+    final srcRect = Rect.fromLTWH(
+      cropRect.left,
+      cropRect.top,
+      cropRect.width,
+      cropRect.height,
+    );
+    
+    final dstRect = Rect.fromLTWH(0, 0, cropRect.width, cropRect.height);
+    
+    canvas.drawImageRect(original, srcRect, dstRect, Paint());
+    
+    final picture = recorder.endRecording();
+    return await picture.toImage(cropRect.width.toInt(), cropRect.height.toInt());
   }
 
   Future<void> loadBackgroundImage(String url) async {
@@ -450,8 +528,9 @@ class EnhancedImageCustomPainter extends CustomPainter {
   }
 
   void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
-    const dashLength = 10.0;
-    const dashGap = 5.0;
+    // Scale dash length and gap based on stroke width
+    final dashLength = 8.0 + (paint.strokeWidth * 2);
+    final dashGap = 4.0 + (paint.strokeWidth * 1.5);
     
     final direction = end - start;
     final distance = direction.distance;

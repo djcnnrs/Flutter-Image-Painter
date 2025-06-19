@@ -68,6 +68,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   
   // Text positioning
   Offset? _pendingTextPosition;
+  
+  // Text editing
+  int? _editingTextIndex;
+  DateTime? _lastTapTime;
+  Offset? _lastTapPosition;
 
   @override
   void initState() {
@@ -82,10 +87,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _controller.setColor(widget.config.defaultColor);
       _controller.setStrokeWidth(widget.config.defaultStrokeWidth);
       
-      // Simple canvas setup
-      _actualWidth = widget.width;
-      _actualHeight = widget.height;
-      _controller.setBackgroundType(BackgroundType.blankCanvas);
+      // Initialize canvas with proper background
+      _initializeCanvas();
       
     } catch (e) {
       print('Error in initState: $e');
@@ -94,19 +97,16 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   Future<void> _initializeCanvas() async {
-    print('🔄 Starting canvas initialization...');
     setState(() => _isLoading = true);
 
     try {
       await _setupBackground();
-      print('✅ Background setup completed');
     } catch (e) {
-      print('❌ Error initializing canvas: $e');
+      print('Error initializing canvas: $e');
       _actualWidth = widget.width;
       _actualHeight = widget.height;
       _controller.setBackgroundType(BackgroundType.blankCanvas);
     } finally {
-      print('🏁 Canvas initialization finished');
       setState(() => _isLoading = false);
     }
   }
@@ -149,8 +149,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   /// Public method to export the image
-  Future<Uint8List?> exportImage() async {
-    return await _controller.exportImage(Size(_actualWidth, _actualHeight));
+  Future<Uint8List?> exportImage({bool autoCrop = true}) async {
+    return await _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: autoCrop);
   }
 
   /// Public method to undo last action
@@ -202,8 +202,16 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       animation: _controller,
       builder: (context, child) {
         return GestureDetector(
+          onTap: () {
+            // Handle potential text editing (double-click detection)
+            _handleTapForTextEditing();
+          },
           onPanStart: (details) {
             final offset = details.localPosition;
+            
+            // Store tap info for double-click detection
+            _lastTapPosition = offset;
+            _lastTapTime = DateTime.now();
             
             // Handle text mode differently - store position and open dialog
             if (_controller.mode == PaintMode.text) {
@@ -331,7 +339,10 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       tooltip: 'Drawing Mode: ${_getModeLabel(_controller.mode)}',
       onSelected: (mode) {
         _controller.setMode(mode);
-        // For text mode, we'll open dialog when user clicks on canvas
+        // Show instruction for text mode
+        if (mode == PaintMode.text) {
+          _showTextModeInstructions();
+        }
       },
       itemBuilder: (context) {
         return widget.config.enabledModes.map((mode) {
@@ -463,6 +474,42 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     );
   }
 
+  /// Handle tap events for potential text editing
+  void _handleTapForTextEditing() {
+    if (_lastTapPosition == null || _lastTapTime == null) return;
+    
+    // If we're in text repositioning mode, handle that first
+    if (_editingTextIndex != null) {
+      _pendingTextPosition = _lastTapPosition;
+      _updateExistingText();
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      return;
+    }
+    
+    final now = DateTime.now();
+    final timeDiff = now.difference(_lastTapTime!).inMilliseconds;
+    
+    // Check for double-click (within 500ms)
+    if (timeDiff < 500) {
+      final textIndex = _findTextAtPosition(_lastTapPosition!);
+      if (textIndex != null) {
+        _editTextAtIndex(textIndex);
+      }
+    }
+  }
+
+  /// Edit existing text at the given index
+  void _editTextAtIndex(int index) {
+    final textInfo = _controller.paintHistory[index];
+    if (textInfo.mode != PaintMode.text || textInfo.text == null) return;
+    
+    _editingTextIndex = index;
+    _textController.text = textInfo.text!;
+    _pendingTextPosition = textInfo.offsets.isNotEmpty ? textInfo.offsets[0] : Offset.zero;
+    
+    _openTextEditDialog();
+  }
+
   void _openTextDialog() {
     showDialog(
       context: context,
@@ -505,6 +552,122 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     );
   }
 
+  void _openTextEditDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit Text'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _textController,
+              autofocus: true,
+              decoration: InputDecoration(hintText: 'Edit text'),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Tap anywhere on the canvas to reposition the text',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _editingTextIndex = null;
+              _pendingTextPosition = null;
+              _textController.clear();
+              Navigator.pop(context);
+            },
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Start position selection mode
+              _startTextRepositioning();
+            },
+            child: Text('Reposition'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (_textController.text.isNotEmpty && _editingTextIndex != null) {
+                _updateExistingText();
+              }
+              Navigator.pop(context);
+            },
+            child: Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Start text repositioning mode
+  void _startTextRepositioning() {
+    // Switch to a temporary mode for repositioning
+    final originalMode = _controller.mode;
+    _controller.setMode(PaintMode.none); // Disable drawing
+    
+    _showTextPositionInstructions(
+      onCancel: () {
+        _editingTextIndex = null;
+        _pendingTextPosition = null;
+        _textController.clear();
+        _controller.setMode(originalMode);
+      },
+    );
+  }
+
+  /// Show text mode instructions when user selects text mode
+  void _showTextModeInstructions() {
+    _showTextPositionInstructions();
+  }
+
+  /// Show instructions for text positioning (used for both new text and repositioning)
+  void _showTextPositionInstructions({VoidCallback? onCancel}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Tap anywhere to place the text at that location'),
+        duration: Duration(seconds: 4),
+        action: onCancel != null 
+          ? SnackBarAction(
+              label: 'Cancel',
+              onPressed: onCancel,
+            )
+          : null,
+      ),
+    );
+  }
+
+  /// Update existing text with new content and/or position
+  void _updateExistingText() {
+    if (_editingTextIndex == null) return;
+    
+    final newText = _textController.text;
+    final currentInfo = _controller.paintHistory[_editingTextIndex!];
+    final newPosition = _pendingTextPosition ?? (currentInfo.offsets.isNotEmpty ? currentInfo.offsets[0] : Offset.zero);
+    
+    // Create updated PaintInfo
+    final updatedInfo = PaintInfo(
+      mode: PaintMode.text,
+      text: newText,
+      offsets: [newPosition],
+      color: currentInfo.color,
+      strokeWidth: currentInfo.strokeWidth,
+    );
+    
+    // Replace the existing text in history
+    _controller.paintHistory[_editingTextIndex!] = updatedInfo;
+    _controller.notifyListeners();
+    
+    // Clean up
+    _editingTextIndex = null;
+    _pendingTextPosition = null;
+    _textController.clear();
+  }
+
   IconData _getModeIcon(PaintMode mode) {
     switch (mode) {
       case PaintMode.none: return Icons.zoom_out_map;
@@ -529,6 +692,36 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       case PaintMode.arrow: return 'Arrow';
       case PaintMode.dashedLine: return 'Dashed Line';
     }
+  }
+
+  /// Check if a tap position hits any existing text
+  int? _findTextAtPosition(Offset position) {
+    for (int i = _controller.paintHistory.length - 1; i >= 0; i--) {
+      final info = _controller.paintHistory[i];
+      if (info.mode == PaintMode.text && info.text != null && info.offsets.isNotEmpty) {
+        final textPosition = info.offsets[0]!;
+        final textBounds = _calculateTextBounds(info.text!, textPosition, info.strokeWidth * 4);
+        
+        if (textBounds.contains(position)) {
+          return i;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Calculate the bounds of a text element
+  Rect _calculateTextBounds(String text, Offset position, double fontSize) {
+    // Estimate text dimensions
+    final width = text.length * fontSize * 0.6;
+    final height = fontSize;
+    
+    return Rect.fromLTWH(
+      position.dx,
+      position.dy,
+      width,
+      height,
+    );
   }
 }
 
