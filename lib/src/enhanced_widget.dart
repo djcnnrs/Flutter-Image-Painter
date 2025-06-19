@@ -804,6 +804,14 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     }
   }
 
+  /// Clean up text editing state
+  void _cleanupTextEditing() {
+    _editingTextIndex = null;
+    _pendingTextPosition = null;
+    _textController.clear();
+    _isRepositioning = false; // Reset repositioning mode
+  }
+
   IconData _getModeIcon(PaintMode mode) {
     switch (mode) {
       case PaintMode.none: return Icons.zoom_out_map;
