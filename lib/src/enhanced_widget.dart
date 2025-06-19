@@ -15,9 +15,9 @@ class EnhancedImagePainterConfig {
   final bool toolbarAtTop;
   final Color? toolbarBackgroundColor;
   final bool enableAutoCrop;
-  final Future<void> Function()? onSave;
-  final void Function()? onUndo;
-  final void Function()? onClear;
+  final VoidCallback? onSave; // Simplified to VoidCallback 
+  final VoidCallback? onUndo;
+  final VoidCallback? onClear;
 
   const EnhancedImagePainterConfig({
     this.enabledModes = const [PaintMode.freeStyle, PaintMode.line, PaintMode.rect, PaintMode.circle, PaintMode.text],
@@ -65,13 +65,10 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   // Text positioning
   Offset? _pendingTextPosition;
   
-  // Text editing
+  // Text editing - simplified
   int? _editingTextIndex;
-  DateTime? _lastTapTime;
-  Offset? _lastTapPosition;
-  DateTime? _lastClickTime;
   
-  // Text dragging
+  // Text dragging - simplified
   bool _isDraggingText = false;
   int? _draggingTextIndex;
   Offset? _dragStartPosition;
@@ -150,12 +147,12 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     }
   }
 
-  /// Public method to export the image with auto-crop enabled by default
+  /// Public method to export the image (signature package style)
   Future<Uint8List?> exportImage() async {
     return _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: true);
   }
   
-  /// Public method to export the image without auto-crop
+  /// Public method to export the image without auto-crop  
   Future<Uint8List?> exportImageFullSize() async {
     return _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: false);
   }
@@ -272,15 +269,12 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   Widget _buildCanvas() {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return GestureDetector(
-          onTapDown: (details) {
-            final offset = details.localPosition;
-            
-            // Always check for text first (in any mode)
-            final textIndex = _findTextAtPosition(offset);
+    return GestureDetector(
+      onTapDown: (details) {
+        final offset = details.localPosition;
+        
+        // Always check for text first (in any mode)
+        final textIndex = _findTextAtPosition(offset);
             
             // Handle text mode
             if (_controller.mode == PaintMode.text) {
@@ -323,11 +317,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               _draggingTextIndex = null;
               _dragStartPosition = null;
             }
-            
-            // Handle potential text editing (double-click detection) for all modes
-            _lastTapPosition = offset;
-            _lastTapTime = DateTime.now();
-            _handleTapForTextEditing();
+          },
           },
           onPanStart: (details) {
             final offset = details.localPosition;
@@ -466,10 +456,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               ],
             ),
           ),
-          ),
         );
-      },
-    );
   }
 
   Widget _buildToolbar() {
@@ -477,12 +464,9 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       height: 60,
       padding: const EdgeInsets.all(4),
       color: widget.config.toolbarBackgroundColor ?? Colors.grey[800], // Darker background
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
               _buildModeSelector(),
               if (widget.config.showColorTool) _buildColorSelector(),
               if (widget.config.showStrokeTool) _buildStrokeSelector(),
@@ -517,16 +501,14 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               ),
               IconButton(
                 icon: Icon(Icons.save, color: _controller.paintHistory.isEmpty ? Colors.grey : Colors.white),
-                onPressed: _controller.paintHistory.isEmpty ? null : () async {
+                onPressed: _controller.paintHistory.isEmpty ? null : () {
                   if (widget.config.onSave != null) {
-                    await widget.config.onSave!();
+                    widget.config.onSave!();
                   }
                 },
                 tooltip: _controller.paintHistory.isEmpty ? 'Canvas is empty' : 'Save',
               ),
             ],
-          );
-        },
       ),
     );
   }
@@ -670,26 +652,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   /// Handle tap events for potential text editing
-  void _handleTapForTextEditing() {
-    if (_lastTapPosition == null) return;
-    
-    final now = DateTime.now();
-    
-    // Check for double-click (within 300ms of previous click)
-    if (_lastClickTime != null && now.difference(_lastClickTime!).inMilliseconds < 300) {
-      final textIndex = _findTextAtPosition(_lastTapPosition!);
-      if (textIndex != null) {
-        _editTextAtIndex(textIndex);
-        _lastClickTime = null; // Reset to prevent triple-click
-        return;
-      }
-    }
-    
-    // Store this click time for next double-click check
-    _lastClickTime = now;
-  }
-
-  /// Edit existing text at the given index
+  /// Edit existing text at the given index (simplified - no double-click)
   void _editTextAtIndex(int index) {
     final textInfo = _controller.paintHistory[index];
     if (textInfo.mode != PaintMode.text || textInfo.text == null) return;

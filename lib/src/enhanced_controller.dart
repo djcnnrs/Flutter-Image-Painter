@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:async';
-import 'dart:math' as math;
+import 'dart:math';
 import 'package:flutter/material.dart';
 
 /// Core enums for the enhanced image painter
@@ -219,30 +219,28 @@ class EnhancedImagePainterController extends ChangeNotifier {
       painter.paint(canvas, size);
       final picture = recorder.endRecording();
       
-      // Always try full size first to debug
-      final img = await picture.toImage(size.width.toInt(), size.height.toInt());
-      
       if (autoCrop && _paintHistory.isNotEmpty && _backgroundType != BackgroundType.networkImage) {
-        // Only auto-crop if there's no network image background
-        // Calculate bounding box of all drawn content
-        final bounds = _calculateContentBounds();
-        if (bounds != null && bounds.width > 0 && bounds.height > 0) {
-          // Add some padding around the content
-          const padding = 20.0;
-          final cropRect = Rect.fromLTRB(
-            math.max(0, bounds.left - padding),
-            math.max(0, bounds.top - padding),
-            math.min(size.width, bounds.right + padding),
-            math.min(size.height, bounds.bottom + padding),
-          );
+        // Use signature package approach for auto-crop
+        final bounds = _getDrawingBounds();
+        if (bounds != null) {
+          final width = (bounds.width + 40).toInt(); // Add padding
+          final height = (bounds.height + 40).toInt(); // Add padding
           
-          final croppedImg = await _cropImage(img, cropRect);
-          final byteData = await croppedImg.toByteData(format: ui.ImageByteFormat.png);
+          final cropRecorder = ui.PictureRecorder();
+          final cropCanvas = Canvas(cropRecorder);
+          // Translate to start from minimum points with padding
+          cropCanvas.translate(-bounds.left + 20, -bounds.top + 20);
+          painter.paint(cropCanvas, size);
+          final cropPicture = cropRecorder.endRecording();
+          
+          final img = await cropPicture.toImage(width, height);
+          final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
           return byteData?.buffer.asUint8List();
         }
       }
       
       // Return full size image
+      final img = await picture.toImage(size.width.toInt(), size.height.toInt());
       final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
       return byteData?.buffer.asUint8List();
     } catch (e) {
@@ -253,69 +251,40 @@ class EnhancedImagePainterController extends ChangeNotifier {
     }
   }
 
-  Rect? _calculateContentBounds() {
+  Rect? _getDrawingBounds() {
     if (_paintHistory.isEmpty) return null;
     
     double minX = double.infinity;
     double minY = double.infinity;
     double maxX = double.negativeInfinity;
     double maxY = double.negativeInfinity;
-    
+
     for (final info in _paintHistory) {
       for (final offset in info.offsets) {
         if (offset != null) {
-          minX = math.min(minX, offset.dx);
-          minY = math.min(minY, offset.dy);
-          maxX = math.max(maxX, offset.dx);
-          maxY = math.max(maxY, offset.dy);
+          if (offset.dx < minX) minX = offset.dx;
+          if (offset.dy < minY) minY = offset.dy;
+          if (offset.dx > maxX) maxX = offset.dx;
+          if (offset.dy > maxY) maxY = offset.dy;
         }
       }
-      
-      // For text, account for text size
-      if (info.mode == PaintMode.text && info.offsets.isNotEmpty && info.text != null) {
-        final textSize = _estimateTextSize(info.text!, info.strokeWidth * 4);
-        final offset = info.offsets[0]!;
-        maxX = math.max(maxX, offset.dx + textSize.width);
-        maxY = math.max(maxY, offset.dy + textSize.height);
-      }
-      
-      // For shapes with stroke width, add stroke padding
-      if (info.mode != PaintMode.text && info.offsets.isNotEmpty) {
-        final strokePadding = info.strokeWidth / 2;
-        minX = math.min(minX, minX - strokePadding);
-        minY = math.min(minY, minY - strokePadding);
-        maxX = math.max(maxX, maxX + strokePadding);
-        maxY = math.max(maxY, maxY + strokePadding);
-      }
     }
-    
+
     if (minX == double.infinity) return null;
     
-    return Rect.fromLTRB(minX, minY, maxX, maxY);
+    // Add stroke width padding
+    const strokePadding = 10.0;
+    return Rect.fromLTRB(
+      minX - strokePadding,
+      minY - strokePadding,
+      maxX + strokePadding,
+      maxY + strokePadding,
+    );
   }
 
   Size _estimateTextSize(String text, double fontSize) {
     // Rough estimation of text size
     return Size(text.length * fontSize * 0.6, fontSize);
-  }
-
-  Future<ui.Image> _cropImage(ui.Image original, Rect cropRect) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    
-    final srcRect = Rect.fromLTWH(
-      cropRect.left,
-      cropRect.top,
-      cropRect.width,
-      cropRect.height,
-    );
-    
-    final dstRect = Rect.fromLTWH(0, 0, cropRect.width, cropRect.height);
-    
-    canvas.drawImageRect(original, srcRect, dstRect, Paint());
-    
-    final picture = recorder.endRecording();
-    return await picture.toImage(cropRect.width.toInt(), cropRect.height.toInt());
   }
 
   Future<void> loadBackgroundImage(String url) async {
@@ -544,15 +513,15 @@ class EnhancedImageCustomPainter extends CustomPainter {
     if (length <= 0) return;
     
     final unitVector = direction / length;
-    final angle = math.atan2(unitVector.dy, unitVector.dx);
+    final angle = atan2(unitVector.dy, unitVector.dx);
     
     final arrowHead1 = end - Offset(
-      arrowHeadLength * math.cos(angle - arrowHeadAngle),
-      arrowHeadLength * math.sin(angle - arrowHeadAngle),
+      arrowHeadLength * cos(angle - arrowHeadAngle),
+      arrowHeadLength * sin(angle - arrowHeadAngle),
     );
     final arrowHead2 = end - Offset(
-      arrowHeadLength * math.cos(angle + arrowHeadAngle),
-      arrowHeadLength * math.sin(angle + arrowHeadAngle),
+      arrowHeadLength * cos(angle + arrowHeadAngle),
+      arrowHeadLength * sin(angle + arrowHeadAngle),
     );
     
     canvas.drawLine(end, arrowHead1, paint);
@@ -575,7 +544,7 @@ class EnhancedImageCustomPainter extends CustomPainter {
     
     while (currentDistance < distance) {
       final segmentLength = drawDash ? dashLength : dashGap;
-      final nextDistance = math.min(currentDistance + segmentLength, distance);
+      final nextDistance = min(currentDistance + segmentLength, distance);
       
       if (drawDash) {
         final segmentStart = start + unitVector * currentDistance;
