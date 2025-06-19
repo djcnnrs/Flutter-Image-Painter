@@ -14,6 +14,7 @@ class EnhancedImagePainterConfig {
   final bool showFillOption;
   final bool toolbarAtTop;
   final Color? toolbarBackgroundColor;
+  final bool enableAutoCrop;
   final Future<void> Function()? onSave;
   final void Function()? onUndo;
   final void Function()? onClear;
@@ -27,6 +28,7 @@ class EnhancedImagePainterConfig {
     this.showFillOption = true,
     this.toolbarAtTop = false,
     this.toolbarBackgroundColor,
+    this.enableAutoCrop = false,
     this.onSave,
     this.onUndo,
     this.onClear,
@@ -100,7 +102,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     setState(() => _isLoading = true);
 
     try {
-      await _setupBackground();
+      await _setupBackground(widget.bgImage);
     } catch (e) {
       debugPrint('Error initializing canvas: $e');
       _actualWidth = widget.width;
@@ -111,8 +113,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     }
   }
 
-  Future<void> _setupBackground() async {
-    final bgImage = widget.bgImage?.trim();
+  Future<void> _setupBackground([String? bgImageOverride]) async {
+    final bgImage = (bgImageOverride ?? widget.bgImage)?.trim();
     
     if (bgImage == null || bgImage.isEmpty || bgImage == "Blank Canvas") {
       _controller.setBackgroundType(BackgroundType.blankCanvas);
@@ -148,9 +150,25 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     }
   }
 
-  /// Public method to export the image
-  Future<Uint8List?> exportImage({bool autoCrop = false}) async {
+  /// Public method to export the image with auto-crop enabled by default
+  Future<Uint8List?> exportImage({bool autoCrop = true}) async {
     return await _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: autoCrop);
+  }
+
+  /// Public method to update background dynamically
+  Future<void> updateBackground(String? bgImage) async {
+    setState(() => _isLoading = true);
+    
+    try {
+      await _setupBackground(bgImage);
+      // Force repaint after background change
+      _controller.markForRepaint();
+      _controller.notifyListeners();
+    } catch (e) {
+      debugPrint('Error updating background: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   /// Public method to undo last action
@@ -172,6 +190,58 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         backgroundColor: Colors.blue,
       ),
     );
+  }
+
+  /// Public method to dynamically update background
+  Future<void> updateBackground(String? newBgImage) async {
+    if (newBgImage == widget.bgImage) return; // No change needed
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final bgImage = newBgImage?.trim();
+      
+      if (bgImage == null || bgImage.isEmpty || bgImage == "Blank Canvas") {
+        _controller.setBackgroundType(BackgroundType.blankCanvas);
+        _controller.setBackgroundImage(null);
+        _actualWidth = widget.width;
+        _actualHeight = widget.height;
+      } else if (bgImage == "Graph Paper") {
+        _controller.setBackgroundType(BackgroundType.graphPaper);
+        _controller.setBackgroundImage(null);
+        _actualWidth = widget.width;
+        _actualHeight = widget.height;
+      } else if (bgImage == "Lined Notebook") {
+        _controller.setBackgroundType(BackgroundType.linedNotebook);
+        _controller.setBackgroundImage(null);
+        _actualWidth = widget.width;
+        _actualHeight = widget.height;
+      } else {
+        // Network image - don't change if we already have a network image
+        if (_controller.backgroundType != BackgroundType.networkImage) {
+          await _controller.loadBackgroundImage(bgImage);
+          _controller.setBackgroundType(BackgroundType.networkImage);
+          _controller.setBackgroundImageUrl(bgImage);
+          
+          if (_controller.backgroundImage != null) {
+            _actualWidth = _controller.backgroundImage!.width.toDouble();
+            _actualHeight = _controller.backgroundImage!.height.toDouble();
+          } else {
+            _actualWidth = widget.width;
+            _actualHeight = widget.height;
+          }
+        }
+      }
+      
+      // Force repaint
+      _controller.markForRepaint();
+      _controller.notifyListeners();
+      
+    } catch (e) {
+      debugPrint('Error updating background: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -357,38 +427,41 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             }
             _controller.resetStartAndEnd();
           },
-          child: Container(
-            width: _actualWidth,
-            height: _actualHeight,
-            color: Colors.white,
-            child: Stack(
-              children: [
-                CustomPaint(
-                  size: Size(_actualWidth, _actualHeight),
-                  painter: EnhancedImageCustomPainter(
-                    controller: _controller,
+          child: ClipRect(          child: ClipRect(
+            child: Container(
+              width: _actualWidth,
+              height: _actualHeight,
+              color: Colors.white,
+              child: Stack(
+                children: [
+                  CustomPaint(
                     size: Size(_actualWidth, _actualHeight),
+                    painter: EnhancedImageCustomPainter(
+                      controller: _controller,
+                      size: Size(_actualWidth, _actualHeight),
+                    ),
                   ),
-                ),
-                // Show text dragging preview
-                if (_isDraggingText && _repositionPreviewPosition != null && _draggingTextIndex != null)
-                  Positioned(
-                    left: _repositionPreviewPosition!.dx,
-                    top: _repositionPreviewPosition!.dy,
-                    child: Opacity(
-                      opacity: 0.7,
-                      child: Text(
-                        _getTextBeingDragged(),
-                        style: TextStyle(
-                          color: _controller.paintHistory[_draggingTextIndex!].color,
-                          fontSize: _controller.paintHistory[_draggingTextIndex!].strokeWidth * 4,
-                          decoration: TextDecoration.none,
+                  // Show text dragging preview
+                  if (_isDraggingText && _repositionPreviewPosition != null && _draggingTextIndex != null)
+                    Positioned(
+                      left: _repositionPreviewPosition!.dx,
+                      top: _repositionPreviewPosition!.dy,
+                      child: Opacity(
+                        opacity: 0.7,
+                        child: Text(
+                          _getTextBeingDragged(),
+                          style: TextStyle(
+                            color: _controller.paintHistory[_draggingTextIndex!].color,
+                            fontSize: _controller.paintHistory[_draggingTextIndex!].strokeWidth * 4,
+                            decoration: TextDecoration.none,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
+          ),
           ),
         );
       },

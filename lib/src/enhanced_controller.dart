@@ -222,7 +222,8 @@ class EnhancedImagePainterController extends ChangeNotifier {
       // Always try full size first to debug
       final img = await picture.toImage(size.width.toInt(), size.height.toInt());
       
-      if (autoCrop && _paintHistory.isNotEmpty) {
+      if (autoCrop && _paintHistory.isNotEmpty && _backgroundType != BackgroundType.networkImage) {
+        // Only auto-crop if there's no network image background
         // Calculate bounding box of all drawn content
         final bounds = _calculateContentBounds();
         if (bounds != null && bounds.width > 0 && bounds.height > 0) {
@@ -276,6 +277,15 @@ class EnhancedImagePainterController extends ChangeNotifier {
         final offset = info.offsets[0]!;
         maxX = math.max(maxX, offset.dx + textSize.width);
         maxY = math.max(maxY, offset.dy + textSize.height);
+      }
+      
+      // For shapes with stroke width, add stroke padding
+      if (info.mode != PaintMode.text && info.offsets.isNotEmpty) {
+        final strokePadding = info.strokeWidth / 2;
+        minX = math.min(minX, minX - strokePadding);
+        minY = math.min(minY, minY - strokePadding);
+        maxX = math.max(maxX, maxX + strokePadding);
+        maxY = math.max(maxY, maxY + strokePadding);
       }
     }
     
