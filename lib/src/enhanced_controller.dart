@@ -243,9 +243,7 @@ class EnhancedImageCustomPainter extends CustomPainter {
   final EnhancedImagePainterController controller;
   final Size size;
 
-  EnhancedImageCustomPainter({required this.controller, required this.size}) {
-    print('🎨 PAINTER CONSTRUCTOR: inProgress=${controller.inProgress}, start=${controller.start}, end=${controller.end}');
-  }
+  EnhancedImageCustomPainter({required this.controller, required this.size});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -257,12 +255,8 @@ class EnhancedImageCustomPainter extends CustomPainter {
     }
     
     // Draw current stroke being drawn (real-time preview)
-    print('🔍 PAINT METHOD DEBUG: inProgress=${controller.inProgress}, start=${controller.start}, end=${controller.end}');
     if (controller.inProgress && controller.start != null && controller.end != null) {
-      print('✅ DRAWING PREVIEW: Mode=${controller.mode}, start=${controller.start}, end=${controller.end}');
       _drawCurrentStroke(canvas);
-    } else {
-      print('❌ PREVIEW CONDITION FAILED: inProgress=${controller.inProgress}, start=${controller.start}, end=${controller.end}');
     }
     
     // Clear the repaint flag after painting
@@ -485,23 +479,20 @@ class EnhancedImageCustomPainter extends CustomPainter {
 
   void _drawCurrentStroke(Canvas canvas) {
     final paint = Paint()
-      ..color = Colors.red.withOpacity(0.8) // Bright red for testing preview visibility
-      ..strokeWidth = controller.strokeWidth + 2 // Much thicker for preview
+      ..color = controller.color.withOpacity(0.9)
+      ..strokeWidth = controller.strokeWidth + 1
       ..style = controller.fill ? PaintingStyle.fill : PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
     
     switch (controller.mode) {
       case PaintMode.line:
-        print('🟦 DRAWING LINE PREVIEW: ${controller.start} → ${controller.end}');
         canvas.drawLine(controller.start!, controller.end!, paint);
         break;
       case PaintMode.rect:
-        print('🟨 DRAWING RECT PREVIEW: ${controller.start} → ${controller.end}');
         final rect = Rect.fromPoints(controller.start!, controller.end!);
         canvas.drawRect(rect, paint);
         break;
       case PaintMode.circle:
-        print('🟣 DRAWING CIRCLE PREVIEW: ${controller.start} → ${controller.end}');
         final radius = (controller.end! - controller.start!).distance;
         canvas.drawCircle(controller.start!, radius, paint);
         break;
@@ -512,11 +503,9 @@ class EnhancedImageCustomPainter extends CustomPainter {
         }
         break;
       case PaintMode.arrow:
-        print('🔥 DRAWING ARROW PREVIEW: ${controller.start} → ${controller.end}');
         _drawArrow(canvas, controller.start!, controller.end!, paint);
         break;
       case PaintMode.dashedLine:
-        print('💙 DRAWING DASHED LINE PREVIEW: ${controller.start} → ${controller.end}');
         _drawDashedLine(canvas, controller.start!, controller.end!, paint);
         break;
       default:
@@ -528,23 +517,16 @@ class EnhancedImageCustomPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) {
     // Always repaint during active drawing for real-time preview
     if (controller.inProgress) {
-      print('🔥 FORCING REPAINT: inProgress=true, mode=${controller.mode}');
       return true;
     }
     
     if (oldDelegate is! EnhancedImageCustomPainter) return true;
     
-    final shouldRepaint = controller.shouldRepaint ||
+    return controller.shouldRepaint ||
            oldDelegate.controller.paintHistory.length != controller.paintHistory.length ||
            oldDelegate.controller.inProgress != controller.inProgress ||
            oldDelegate.controller.start != controller.start ||
            oldDelegate.controller.end != controller.end ||
            oldDelegate.controller.offsets.length != controller.offsets.length;
-    
-    if (shouldRepaint) {
-      print('🔄 SHOULD REPAINT: inProgress=${controller.inProgress}, mode=${controller.mode}');
-    }
-    
-    return shouldRepaint;
   }
 }

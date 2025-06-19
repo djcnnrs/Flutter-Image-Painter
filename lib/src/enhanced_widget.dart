@@ -65,33 +65,30 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   DateTime _lastUpdateTime = DateTime.now();
   static const _updateThreshold = Duration(milliseconds: 16); // ~60 FPS
   List<Offset> _currentStroke = [];
+  
+  // Text positioning
+  Offset? _pendingTextPosition;
 
   @override
   void initState() {
     super.initState();
-    print('⭐ ENHANCED WIDGET INIT v2.0 - Starting initialization!');
     
     try {
       _controller = EnhancedImagePainterController();
-      print('✅ Controller created successfully');
-      
       _transformationController = TransformationController();
       _textController = TextEditingController();
-      print('✅ Additional controllers created');
       
       // Set initial values from config
       _controller.setColor(widget.config.defaultColor);
       _controller.setStrokeWidth(widget.config.defaultStrokeWidth);
-      print('✅ Initial values set');
       
-      // Skip async initialization for now - use simple setup
+      // Simple canvas setup
       _actualWidth = widget.width;
       _actualHeight = widget.height;
       _controller.setBackgroundType(BackgroundType.blankCanvas);
-      print('✅ Simple canvas setup completed');
       
     } catch (e) {
-      print('❌ ERROR in initState: $e');
+      print('Error in initState: $e');
       rethrow;
     }
   }
@@ -144,7 +141,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           _actualHeight = widget.height;
         }
       } catch (e) {
-        print('Failed to load network image: $e');
         _controller.setBackgroundType(BackgroundType.blankCanvas);
         _actualWidth = widget.width;
         _actualHeight = widget.height;
@@ -188,10 +184,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   @override
   Widget build(BuildContext context) {
-    print('🔥 EnhancedImagePainter build() called - Widget is rendering!');
-    print('🎨 Building canvas - Width: $_actualWidth, Height: $_actualHeight');
-    print('🎯 Current mode: ${_controller.mode}');
-
     return Container(
       width: _actualWidth,
       height: _actualHeight + 60,
@@ -206,17 +198,20 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   Widget _buildCanvas() {
-    print('🖼️ Building canvas widget...');
-    
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        print('🔄 AnimatedBuilder rebuilding...');
-        
         return GestureDetector(
           onPanStart: (details) {
             final offset = details.localPosition;
-            print('PAN START: Mode=${_controller.mode}, Offset=$offset');
+            
+            // Handle text mode differently - store position and open dialog
+            if (_controller.mode == PaintMode.text) {
+              _pendingTextPosition = offset;
+              _openTextDialog();
+              return;
+            }
+            
             _controller.setStart(offset);
             _controller.setInProgress(true);
             
@@ -226,7 +221,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               // For shape modes, set the end position same as start initially for immediate preview
               _controller.setEnd(offset);
             }
-            print('PAN START COMPLETE: inProgress=${_controller.inProgress}, start=${_controller.start}, end=${_controller.end}');
           },
           onPanUpdate: (details) {
             final offset = details.localPosition;
@@ -240,14 +234,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             if (_controller.mode == PaintMode.freeStyle) {
               _controller.addOffsets(offset);
             }
-            
-            // Debug: Only log occasionally to avoid spam
-            if (DateTime.now().millisecondsSinceEpoch % 100 < 20) {
-              print('PAN UPDATE: Mode=${_controller.mode}, inProgress=${_controller.inProgress}, end=$offset');
-            }
           },
           onPanEnd: (details) {
-            print('PAN END: Mode=${_controller.mode}');
             _controller.setInProgress(false);
             
             if (_controller.start != null && _controller.end != null) {
@@ -282,7 +270,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return Container(
       height: 60,
       padding: const EdgeInsets.all(4),
-      color: widget.config.toolbarBackgroundColor ?? Colors.grey[200],
+      color: widget.config.toolbarBackgroundColor ?? Colors.grey[800], // Darker background
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
@@ -293,31 +281,42 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               if (widget.config.showColorTool) _buildColorSelector(),
               if (widget.config.showStrokeTool) _buildStrokeSelector(),
               if (widget.config.showFillOption && _controller.canFill()) ...[
-                Checkbox(
-                  value: _controller.fill,
-                  onChanged: (val) => _controller.setFill(val ?? false),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Checkbox(
+                      value: _controller.fill,
+                      onChanged: (val) => _controller.setFill(val ?? false),
+                      fillColor: MaterialStateProperty.resolveWith((states) {
+                        if (states.contains(MaterialState.selected)) {
+                          return Colors.blue;
+                        }
+                        return Colors.white;
+                      }),
+                    ),
+                    Text('Fill', style: TextStyle(color: Colors.white)), // White text for dark background
+                  ],
                 ),
-                Text('Fill'),
               ],
               const Spacer(),
               IconButton(
-                icon: const Icon(Icons.undo),
+                icon: const Icon(Icons.undo, color: Colors.white),
                 onPressed: undoLastAction,
                 tooltip: 'Undo',
               ),
               IconButton(
-                icon: const Icon(Icons.clear),
+                icon: const Icon(Icons.clear, color: Colors.white),
                 onPressed: clearCanvas,
                 tooltip: 'Clear',
               ),
               IconButton(
-                icon: const Icon(Icons.save),
-                onPressed: () async {
+                icon: Icon(Icons.save, color: _controller.paintHistory.isEmpty ? Colors.grey : Colors.white),
+                onPressed: _controller.paintHistory.isEmpty ? null : () async {
                   if (widget.config.onSave != null) {
                     await widget.config.onSave!();
                   }
                 },
-                tooltip: 'Save',
+                tooltip: _controller.paintHistory.isEmpty ? 'Canvas is empty' : 'Save',
               ),
             ],
           );
@@ -328,19 +327,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   Widget _buildModeSelector() {
     return PopupMenuButton<PaintMode>(
-      icon: Icon(_getModeIcon(_controller.mode)),
+      icon: Icon(_getModeIcon(_controller.mode), color: Colors.white),
       tooltip: 'Drawing Mode: ${_getModeLabel(_controller.mode)}',
       onSelected: (mode) {
-        print('🎯 MODE SELECTED: $mode');
         _controller.setMode(mode);
-        // Open text dialog immediately when text mode is selected, just like original
-        if (mode == PaintMode.text) {
-          print('📝 Opening text dialog...');
-          _openTextDialog();
-        }
+        // For text mode, we'll open dialog when user clicks on canvas
       },
       itemBuilder: (context) {
-        print('🔧 Building mode selector popup...');
         return widget.config.enabledModes.map((mode) {
           return PopupMenuItem(
             value: mode,
@@ -404,7 +397,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       icon: Stack(
         alignment: Alignment.center,
         children: [
-          const Icon(Icons.brush),
+          const Icon(Icons.brush, color: Colors.white),
           Positioned(
             bottom: 0,
             right: 0,
@@ -426,8 +419,21 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       itemBuilder: (context) => [
         PopupMenuItem(
           enabled: false,
-          child: _StrokeSliderWidget(
-            controller: _controller,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _StrokeSliderWidget(
+                controller: _controller,
+              ),
+              SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Close'),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -458,7 +464,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   void _openTextDialog() {
-    final fontSize = 6 * _controller.strokeWidth;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -470,22 +475,26 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              _pendingTextPosition = null; // Clear pending position
+              Navigator.pop(context);
+            },
             child: Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
-              if (_textController.text.isNotEmpty) {
+              if (_textController.text.isNotEmpty && _pendingTextPosition != null) {
                 _controller.addPaintInfo(
                   PaintInfo(
                     mode: PaintMode.text,
                     text: _textController.text,
-                    offsets: [], // Empty offsets for now - positioning handled differently
+                    offsets: [_pendingTextPosition!], // Use the stored click position
                     color: _controller.color,
                     strokeWidth: _controller.strokeWidth,
                   ),
                 );
                 _textController.clear();
+                _pendingTextPosition = null; // Clear pending position
               }
               Navigator.pop(context);
             },
