@@ -206,6 +206,8 @@ class EnhancedImagePainterController extends ChangeNotifier {
 
   Future<Uint8List?> exportImage(Size size, {bool autoCrop = false}) async {
     _isExporting = true;
+    _markForRepaint(); // Ensure everything is marked for rendering
+    
     try {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
@@ -213,10 +215,13 @@ class EnhancedImagePainterController extends ChangeNotifier {
       painter.paint(canvas, size);
       final picture = recorder.endRecording();
       
+      // Always try full size first to debug
+      final img = await picture.toImage(size.width.toInt(), size.height.toInt());
+      
       if (autoCrop && _paintHistory.isNotEmpty) {
         // Calculate bounding box of all drawn content
         final bounds = _calculateContentBounds();
-        if (bounds != null) {
+        if (bounds != null && bounds.width > 0 && bounds.height > 0) {
           // Add some padding around the content
           const padding = 20.0;
           final cropRect = Rect.fromLTRB(
@@ -226,17 +231,18 @@ class EnhancedImagePainterController extends ChangeNotifier {
             math.min(size.height, bounds.bottom + padding),
           );
           
-          final img = await picture.toImage(size.width.toInt(), size.height.toInt());
           final croppedImg = await _cropImage(img, cropRect);
           final byteData = await croppedImg.toByteData(format: ui.ImageByteFormat.png);
           return byteData?.buffer.asUint8List();
         }
       }
       
-      // Fallback to full size
-      final img = await picture.toImage(size.width.toInt(), size.height.toInt());
+      // Return full size image
       final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
       return byteData?.buffer.asUint8List();
+    } catch (e) {
+      print('Export error: $e');
+      return null;
     } finally {
       _isExporting = false;
     }
@@ -338,8 +344,8 @@ class EnhancedImageCustomPainter extends CustomPainter {
       _drawPaintInfo(canvas, info);
     }
     
-    // Draw current stroke being drawn (real-time preview)
-    if (controller.inProgress && controller.start != null && controller.end != null) {
+    // Draw current stroke being drawn (real-time preview) - but not during export
+    if (!controller._isExporting && controller.inProgress && controller.start != null && controller.end != null) {
       _drawCurrentStroke(canvas);
     }
     
@@ -602,6 +608,11 @@ class EnhancedImageCustomPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    // Always repaint during export to ensure everything renders
+    if (controller._isExporting) {
+      return true;
+    }
+    
     // Always repaint during active drawing for real-time preview
     if (controller.inProgress) {
       return true;

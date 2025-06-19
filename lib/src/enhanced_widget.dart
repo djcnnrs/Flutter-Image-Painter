@@ -150,7 +150,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   /// Public method to export the image
-  Future<Uint8List?> exportImage({bool autoCrop = true}) async {
+  Future<Uint8List?> exportImage({bool autoCrop = false}) async {
     return await _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: autoCrop);
   }
 
@@ -204,12 +204,22 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       builder: (context, child) {
         return GestureDetector(
           onTapDown: (details) {
-            // Handle text mode immediately on tap down for better responsiveness
+            final offset = details.localPosition;
+            
+            // Handle text mode - but check for existing text first
             if (_controller.mode == PaintMode.text) {
-              final offset = details.localPosition;
-              _pendingTextPosition = offset;
-              _openTextDialog();
-              return;
+              // Check if clicking on existing text for editing
+              final textIndex = _findTextAtPosition(offset);
+              if (textIndex != null) {
+                // Clicking on existing text - edit it
+                _editTextAtIndex(textIndex);
+                return;
+              } else {
+                // Clicking on empty space - add new text
+                _pendingTextPosition = offset;
+                _openTextDialog();
+                return;
+              }
             }
           },
           onTapUp: (details) {
@@ -659,7 +669,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void _showRepositionInstructions() {
     showDialog(
       context: context,
-      barrierDismissible: true,
+      barrierDismissible: false, // Prevent accidental dismissal that causes crashes
       builder: (context) => AlertDialog(
         title: Text('Reposition Text'),
         content: Text('Tap anywhere on the canvas to move the text to that location.'),
@@ -670,6 +680,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               _cleanupTextEditing();
             },
             child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // Dialog closed, user can now tap canvas to reposition
+            },
+            child: Text('OK'),
           ),
         ],
       ),
@@ -738,9 +755,14 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       // Replace the existing text in history
       _controller.paintHistory[_editingTextIndex!] = updatedInfo;
       
-      // Force a repaint to show the updated text
-      setState(() {});
+      // Force immediate repaint
+      _controller._markForRepaint();
       _controller.notifyListeners();
+      
+      // Also force widget rebuild
+      if (mounted) {
+        setState(() {});
+      }
       
     } catch (e) {
       print('Error updating text: $e');
