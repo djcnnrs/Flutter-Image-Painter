@@ -19,7 +19,7 @@ class EnhancedImagePainterConfig {
   final VoidCallback? onUndo;
   final VoidCallback? onClear;
 
-  const EnhancedImagePainterConfig({
+  EnhancedImagePainterConfig({
     this.enabledModes = const [PaintMode.freeStyle, PaintMode.line, PaintMode.rect, PaintMode.circle, PaintMode.text],
     this.defaultStrokeWidth = 2.0,
     this.defaultColor = Colors.red,
@@ -37,13 +37,14 @@ class EnhancedImagePainterConfig {
 
 /// Enhanced Image Painter Widget with all functionality
 class EnhancedImagePainter extends StatefulWidget {
-  const EnhancedImagePainter({
+  EnhancedImagePainter({
     Key? key,
     required this.width,
     required this.height,
     required this.bgImage,
-    this.config = const EnhancedImagePainterConfig(),
-  }) : super(key: key);
+    EnhancedImagePainterConfig? config,
+  }) : config = config ?? EnhancedImagePainterConfig(),
+       super(key: key);
 
   final double width;
   final double height;
