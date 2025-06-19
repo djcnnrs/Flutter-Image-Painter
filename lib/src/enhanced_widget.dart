@@ -74,6 +74,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   DateTime? _lastTapTime;
   Offset? _lastTapPosition;
   static DateTime? _lastClickTime;
+  bool _isRepositioning = false; // Track repositioning mode
 
   @override
   void initState() {
@@ -206,6 +207,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onTapDown: (details) {
             final offset = details.localPosition;
             
+            // Handle repositioning mode first
+            if (_isRepositioning && _editingTextIndex != null) {
+              _updateTextPosition(offset);
+              _isRepositioning = false;
+              return;
+            }
+            
             // Handle text mode - but check for existing text first
             if (_controller.mode == PaintMode.text) {
               // Check if clicking on existing text for editing
@@ -225,8 +233,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onTapUp: (details) {
             final offset = details.localPosition;
             
-            // Skip if we already handled this in onTapDown (text mode)
-            if (_controller.mode == PaintMode.text) {
+            // Skip if we already handled this in onTapDown (text mode or repositioning)
+            if (_controller.mode == PaintMode.text || _isRepositioning) {
               return;
             }
             
@@ -501,15 +509,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void _handleTapForTextEditing() {
     if (_lastTapPosition == null || _controller.mode == PaintMode.text) return; // Don't handle in text mode
     
-    // If we're in text repositioning mode, handle that first
-    if (_editingTextIndex != null) {
-      _pendingTextPosition = _lastTapPosition;
-      _updateExistingText();
-      // Close any repositioning dialogs
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      return;
-    }
-    
     final now = DateTime.now();
     
     // Check for double-click (within 300ms of previous click)
@@ -635,7 +634,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             onPressed: () {
               Navigator.pop(context);
               if (_textController.text.trim().isNotEmpty) {
-                _updateExistingText();
+                _updateTextContent(); // Only update text content, not position
               } else {
                 _cleanupTextEditing();
               }
@@ -661,7 +660,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   /// Start text repositioning mode
   void _startTextRepositioning() {
-    // Stay in repositioning mode but show instructions
+    _isRepositioning = true;
     _showRepositionInstructions();
   }
 
@@ -677,6 +676,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
+              _isRepositioning = false; // Cancel repositioning mode
               _cleanupTextEditing();
             },
             child: Text('Cancel'),
@@ -684,7 +684,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              // Dialog closed, user can now tap canvas to reposition
+              // Keep repositioning mode active, user can now tap canvas
             },
             child: Text('OK'),
           ),
@@ -724,30 +724,27 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     );
   }
 
-  /// Update existing text with new content and/or position
-  void _updateExistingText() {
+  /// Update only the text content, keep same position
+  void _updateTextContent() {
     if (_editingTextIndex == null || _editingTextIndex! >= _controller.paintHistory.length) {
-      // Safety check - invalid index
       _cleanupTextEditing();
       return;
     }
     
     final newText = _textController.text.trim();
     if (newText.isEmpty) {
-      // Don't update with empty text
       _cleanupTextEditing();
       return;
     }
     
     try {
       final currentInfo = _controller.paintHistory[_editingTextIndex!];
-      final newPosition = _pendingTextPosition ?? (currentInfo.offsets.isNotEmpty ? currentInfo.offsets[0] : Offset.zero);
       
-      // Create updated PaintInfo
+      // Create updated PaintInfo with new text but same position
       final updatedInfo = PaintInfo(
         mode: PaintMode.text,
         text: newText,
-        offsets: [newPosition],
+        offsets: currentInfo.offsets, // Keep same position
         color: currentInfo.color,
         strokeWidth: currentInfo.strokeWidth,
       );
@@ -759,23 +756,52 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _controller.markForRepaint();
       _controller.notifyListeners();
       
-      // Also force widget rebuild
       if (mounted) {
         setState(() {});
       }
       
     } catch (e) {
-      print('Error updating text: $e');
+      print('Error updating text content: $e');
     } finally {
       _cleanupTextEditing();
     }
   }
 
-  /// Clean up text editing state
-  void _cleanupTextEditing() {
-    _editingTextIndex = null;
-    _pendingTextPosition = null;
-    _textController.clear();
+  /// Update text position (used when repositioning)
+  void _updateTextPosition(Offset newPosition) {
+    if (_editingTextIndex == null || _editingTextIndex! >= _controller.paintHistory.length) {
+      _cleanupTextEditing();
+      return;
+    }
+    
+    try {
+      final currentInfo = _controller.paintHistory[_editingTextIndex!];
+      
+      // Create updated PaintInfo with new position but same text
+      final updatedInfo = PaintInfo(
+        mode: PaintMode.text,
+        text: currentInfo.text, // Keep same text
+        offsets: [newPosition], // New position
+        color: currentInfo.color,
+        strokeWidth: currentInfo.strokeWidth,
+      );
+      
+      // Replace the existing text in history
+      _controller.paintHistory[_editingTextIndex!] = updatedInfo;
+      
+      // Force immediate repaint
+      _controller.markForRepaint();
+      _controller.notifyListeners();
+      
+      if (mounted) {
+        setState(() {});
+      }
+      
+    } catch (e) {
+      print('Error updating text position: $e');
+    } finally {
+      _cleanupTextEditing();
+    }
   }
 
   IconData _getModeIcon(PaintMode mode) {
