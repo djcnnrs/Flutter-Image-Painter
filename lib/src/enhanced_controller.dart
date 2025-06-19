@@ -336,12 +336,10 @@ class EnhancedImagePainterController extends ChangeNotifier {
 class EnhancedImageCustomPainter extends CustomPainter {
   final EnhancedImagePainterController controller;
   final Size size;
-  final int? hideTextIndex; // Index of text to hide during repositioning
 
   EnhancedImageCustomPainter({
     required this.controller, 
     required this.size,
-    this.hideTextIndex,
   });
 
   @override
@@ -349,12 +347,8 @@ class EnhancedImageCustomPainter extends CustomPainter {
     _drawBackground(canvas, size);
     
     // Draw all completed strokes
-    for (int i = 0; i < controller.paintHistory.length; i++) {
-      // Skip the text being repositioned
-      if (hideTextIndex != null && i == hideTextIndex) {
-        continue;
-      }
-      _drawPaintInfo(canvas, controller.paintHistory[i]);
+    for (final info in controller.paintHistory) {
+      _drawPaintInfo(canvas, info);
     }
     
     // Draw current stroke being drawn (real-time preview) - but not during export

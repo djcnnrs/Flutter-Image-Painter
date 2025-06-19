@@ -204,43 +204,34 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        return MouseRegion(
-          onHover: (event) {
-            // Update preview position during repositioning when mouse moves
-            if (_isRepositioning) {
-              setState(() {
-                _repositionPreviewPosition = event.localPosition;
-              });
+        return GestureDetector(
+          onTapDown: (details) {
+            final offset = details.localPosition;
+            
+            // Handle repositioning mode first
+            if (_isRepositioning && _editingTextIndex != null) {
+              _updateTextPosition(offset);
+              _isRepositioning = false;
+              _repositionPreviewPosition = null;
+              return;
             }
-          },
-          child: GestureDetector(
-            onTapDown: (details) {
-              final offset = details.localPosition;
-              
-              // Handle repositioning mode first
-              if (_isRepositioning && _editingTextIndex != null) {
-                _updateTextPosition(offset);
-                _isRepositioning = false;
-                _repositionPreviewPosition = null;
+            
+            // Handle text mode - but check for existing text first
+            if (_controller.mode == PaintMode.text) {
+              // Check if clicking on existing text for editing
+              final textIndex = _findTextAtPosition(offset);
+              if (textIndex != null) {
+                // Clicking on existing text - edit it
+                _editTextAtIndex(textIndex);
+                return;
+              } else {
+                // Clicking on empty space - add new text
+                _pendingTextPosition = offset;
+                _openTextDialog();
                 return;
               }
-              
-              // Handle text mode - but check for existing text first
-              if (_controller.mode == PaintMode.text) {
-                // Check if clicking on existing text for editing
-                final textIndex = _findTextAtPosition(offset);
-                if (textIndex != null) {
-                  // Clicking on existing text - edit it
-                  _editTextAtIndex(textIndex);
-                  return;
-                } else {
-                  // Clicking on empty space - add new text
-                  _pendingTextPosition = offset;
-                  _openTextDialog();
-                  return;
-                }
-              }
-            },
+            }
+          },
           onTapUp: (details) {
             final offset = details.localPosition;
             
@@ -318,7 +309,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                   painter: EnhancedImageCustomPainter(
                     controller: _controller,
                     size: Size(_actualWidth, _actualHeight),
-                    hideTextIndex: _isRepositioning ? _editingTextIndex : null, // Hide original during repositioning
                   ),
                 ),
                 // Show repositioning preview
@@ -326,13 +316,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                   Positioned(
                     left: _repositionPreviewPosition!.dx,
                     top: _repositionPreviewPosition!.dy,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.8),
-                        border: Border.all(color: Colors.blue, width: 1),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                      padding: EdgeInsets.all(2),
+                    child: Opacity(
+                      opacity: 0.7,
                       child: Text(
                         _getTextBeingRepositioned(),
                         style: TextStyle(
@@ -346,7 +331,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               ],
             ),
           ),
-        ),
+        );
       },
     );
   }
