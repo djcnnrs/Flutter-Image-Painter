@@ -75,6 +75,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   Offset? _lastTapPosition;
   static DateTime? _lastClickTime;
   bool _isRepositioning = false; // Track repositioning mode
+  Offset? _repositionPreviewPosition; // Track cursor position during repositioning
 
   @override
   void initState() {
@@ -211,6 +212,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             if (_isRepositioning && _editingTextIndex != null) {
               _updateTextPosition(offset);
               _isRepositioning = false;
+              _repositionPreviewPosition = null;
               return;
             }
             
@@ -246,8 +248,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onPanStart: (details) {
             final offset = details.localPosition;
             
-            // Skip pan gestures in text mode (handled by onTapUp)
-            if (_controller.mode == PaintMode.text) {
+            // Skip pan gestures in text mode or repositioning mode
+            if (_controller.mode == PaintMode.text || _isRepositioning) {
               return;
             }
             
@@ -263,6 +265,14 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           },
           onPanUpdate: (details) {
             final offset = details.localPosition;
+            
+            // Handle repositioning preview
+            if (_isRepositioning) {
+              setState(() {
+                _repositionPreviewPosition = offset;
+              });
+              return;
+            }
             
             // Ensure we're still in progress
             _controller.setInProgress(true);
@@ -292,12 +302,33 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             width: _actualWidth,
             height: _actualHeight,
             color: Colors.white,
-            child: CustomPaint(
-              size: Size(_actualWidth, _actualHeight),
-              painter: EnhancedImageCustomPainter(
-                controller: _controller,
-                size: Size(_actualWidth, _actualHeight),
-              ),
+            child: Stack(
+              children: [
+                CustomPaint(
+                  size: Size(_actualWidth, _actualHeight),
+                  painter: EnhancedImageCustomPainter(
+                    controller: _controller,
+                    size: Size(_actualWidth, _actualHeight),
+                  ),
+                ),
+                // Show repositioning preview
+                if (_isRepositioning && _repositionPreviewPosition != null && _editingTextIndex != null)
+                  Positioned(
+                    left: _repositionPreviewPosition!.dx,
+                    top: _repositionPreviewPosition!.dy,
+                    child: Opacity(
+                      opacity: 0.7,
+                      child: Text(
+                        _getTextBeingRepositioned(),
+                        style: TextStyle(
+                          color: _controller.paintHistory[_editingTextIndex!].color,
+                          fontSize: _controller.paintHistory[_editingTextIndex!].strokeWidth * 4,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         );
@@ -611,7 +642,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                 // Allow Enter key to update
                 if (text.trim().isNotEmpty) {
                   Navigator.pop(context);
-                  _updateExistingText();
+                  _updateTextContent();
                 }
               },
             ),
@@ -661,36 +692,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   /// Start text repositioning mode
   void _startTextRepositioning() {
     _isRepositioning = true;
-    _showRepositionInstructions();
-  }
-
-  /// Show instructions specifically for repositioning existing text
-  void _showRepositionInstructions() {
-    showDialog(
-      context: context,
-      barrierDismissible: false, // Prevent accidental dismissal that causes crashes
-      builder: (context) => AlertDialog(
-        title: Text('Reposition Text'),
-        content: Text('Tap anywhere on the canvas to move the text to that location.'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _isRepositioning = false; // Cancel repositioning mode
-              _cleanupTextEditing();
-            },
-            child: Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              // Keep repositioning mode active, user can now tap canvas
-            },
-            child: Text('OK'),
-          ),
-        ],
-      ),
-    );
+    // No dialog - just start repositioning mode immediately
   }
 
   /// Show text mode instructions when user selects text mode
@@ -810,6 +812,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     _pendingTextPosition = null;
     _textController.clear();
     _isRepositioning = false; // Reset repositioning mode
+    _repositionPreviewPosition = null; // Reset preview position
   }
 
   IconData _getModeIcon(PaintMode mode) {
@@ -836,6 +839,15 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       case PaintMode.arrow: return 'Arrow';
       case PaintMode.dashedLine: return 'Dashed Line';
     }
+  }
+
+  /// Get the text content being repositioned
+  String _getTextBeingRepositioned() {
+    if (_editingTextIndex != null && _editingTextIndex! < _controller.paintHistory.length) {
+      final textInfo = _controller.paintHistory[_editingTextIndex!];
+      return textInfo.text ?? '';
+    }
+    return '';
   }
 
   /// Check if a tap position hits any existing text
