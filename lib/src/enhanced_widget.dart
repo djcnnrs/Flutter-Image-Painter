@@ -73,6 +73,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   int? _editingTextIndex;
   DateTime? _lastTapTime;
   Offset? _lastTapPosition;
+  static DateTime? _lastClickTime;
 
   @override
   void initState() {
@@ -202,23 +203,33 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       animation: _controller,
       builder: (context, child) {
         return GestureDetector(
+          onTapDown: (details) {
+            // Handle text mode immediately on tap down for better responsiveness
+            if (_controller.mode == PaintMode.text) {
+              final offset = details.localPosition;
+              _pendingTextPosition = offset;
+              _openTextDialog();
+              return;
+            }
+          },
           onTapUp: (details) {
-            // Handle potential text editing (double-click detection)
-            _lastTapPosition = details.localPosition;
+            final offset = details.localPosition;
+            
+            // Skip if we already handled this in onTapDown (text mode)
+            if (_controller.mode == PaintMode.text) {
+              return;
+            }
+            
+            // Handle potential text editing (double-click detection) only when NOT in text mode
+            _lastTapPosition = offset;
             _lastTapTime = DateTime.now();
             _handleTapForTextEditing();
           },
           onPanStart: (details) {
             final offset = details.localPosition;
             
-            // Store tap info for double-click detection
-            _lastTapPosition = offset;
-            _lastTapTime = DateTime.now();
-            
-            // Handle text mode differently - store position and open dialog
+            // Skip pan gestures in text mode (handled by onTapUp)
             if (_controller.mode == PaintMode.text) {
-              _pendingTextPosition = offset;
-              _openTextDialog();
               return;
             }
             
@@ -478,26 +489,31 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   /// Handle tap events for potential text editing
   void _handleTapForTextEditing() {
-    if (_lastTapPosition == null || _lastTapTime == null) return;
+    if (_lastTapPosition == null || _controller.mode == PaintMode.text) return; // Don't handle in text mode
     
     // If we're in text repositioning mode, handle that first
     if (_editingTextIndex != null) {
       _pendingTextPosition = _lastTapPosition;
       _updateExistingText();
-      Navigator.of(context).popUntil((route) => route.isFirst); // Close any open dialogs
+      // Close any repositioning dialogs
+      Navigator.of(context).popUntil((route) => route.isFirst);
       return;
     }
     
     final now = DateTime.now();
-    final timeDiff = now.difference(_lastTapTime!).inMilliseconds;
     
-    // Check for double-click (within 500ms)
-    if (timeDiff < 500) {
+    // Check for double-click (within 300ms of previous click)
+    if (_lastClickTime != null && now.difference(_lastClickTime!).inMilliseconds < 300) {
       final textIndex = _findTextAtPosition(_lastTapPosition!);
       if (textIndex != null) {
         _editTextAtIndex(textIndex);
+        _lastClickTime = null; // Reset to prevent triple-click
+        return;
       }
     }
+    
+    // Store this click time for next double-click check
+    _lastClickTime = now;
   }
 
   /// Edit existing text at the given index
@@ -515,37 +531,36 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void _openTextDialog() {
     showDialog(
       context: context,
+      barrierDismissible: false, // Prevent dismissing accidentally
       builder: (context) => AlertDialog(
         title: Text('Add Text'),
         content: TextField(
           controller: _textController,
           autofocus: true,
           decoration: InputDecoration(hintText: 'Enter text'),
+          onSubmitted: (text) {
+            // Allow Enter key to submit
+            if (text.trim().isNotEmpty && _pendingTextPosition != null) {
+              _addText();
+              Navigator.pop(context);
+            }
+          },
         ),
         actions: [
           TextButton(
             onPressed: () {
               _pendingTextPosition = null; // Clear pending position
+              _textController.clear();
               Navigator.pop(context);
             },
             child: Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
-              if (_textController.text.isNotEmpty && _pendingTextPosition != null) {
-                _controller.addPaintInfo(
-                  PaintInfo(
-                    mode: PaintMode.text,
-                    text: _textController.text,
-                    offsets: [_pendingTextPosition!], // Use the stored click position
-                    color: _controller.color,
-                    strokeWidth: _controller.strokeWidth,
-                  ),
-                );
-                _textController.clear();
-                _pendingTextPosition = null; // Clear pending position
+              if (_textController.text.trim().isNotEmpty && _pendingTextPosition != null) {
+                _addText();
+                Navigator.pop(context);
               }
-              Navigator.pop(context);
             },
             child: Text('Add'),
           ),
@@ -554,9 +569,26 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     );
   }
 
+  void _addText() {
+    if (_textController.text.trim().isNotEmpty && _pendingTextPosition != null) {
+      _controller.addPaintInfo(
+        PaintInfo(
+          mode: PaintMode.text,
+          text: _textController.text.trim(),
+          offsets: [_pendingTextPosition!],
+          color: _controller.color,
+          strokeWidth: _controller.strokeWidth,
+        ),
+      );
+      _textController.clear();
+      _pendingTextPosition = null;
+    }
+  }
+
   void _openTextEditDialog() {
     showDialog(
       context: context,
+      barrierDismissible: false, // Prevent accidental dismissal
       builder: (context) => AlertDialog(
         title: Text('Edit Text'),
         content: Column(
@@ -566,10 +598,17 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               controller: _textController,
               autofocus: true,
               decoration: InputDecoration(hintText: 'Edit text'),
+              onSubmitted: (text) {
+                // Allow Enter key to update
+                if (text.trim().isNotEmpty) {
+                  Navigator.pop(context);
+                  _updateExistingText();
+                }
+              },
             ),
             SizedBox(height: 16),
             Text(
-              'Tap anywhere on the canvas to reposition the text',
+              'Use Update to change text, or Reposition to move it',
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
           ],
@@ -577,29 +616,33 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         actions: [
           TextButton(
             onPressed: () {
-              _editingTextIndex = null;
-              _pendingTextPosition = null;
-              _textController.clear();
               Navigator.pop(context);
+              _cleanupTextEditing();
             },
             child: Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              // Start position selection mode
-              _startTextRepositioning();
+              if (_textController.text.trim().isNotEmpty) {
+                _updateExistingText();
+              } else {
+                _cleanupTextEditing();
+              }
             },
-            child: Text('Reposition'),
+            child: Text('Update'),
           ),
           TextButton(
             onPressed: () {
-              if (_textController.text.isNotEmpty && _editingTextIndex != null) {
-                _updateExistingText();
-              }
               Navigator.pop(context);
+              // Start position selection mode
+              if (_textController.text.trim().isNotEmpty) {
+                _startTextRepositioning();
+              } else {
+                _cleanupTextEditing();
+              }
             },
-            child: Text('Update'),
+            child: Text('Reposition'),
           ),
         ],
       ),
@@ -608,17 +651,28 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   /// Start text repositioning mode
   void _startTextRepositioning() {
-    // Switch to a temporary mode for repositioning
-    final originalMode = _controller.mode;
-    _controller.setMode(PaintMode.none); // Disable drawing
-    
-    _showTextPositionInstructions(
-      onCancel: () {
-        _editingTextIndex = null;
-        _pendingTextPosition = null;
-        _textController.clear();
-        _controller.setMode(originalMode);
-      },
+    // Stay in repositioning mode but show instructions
+    _showRepositionInstructions();
+  }
+
+  /// Show instructions specifically for repositioning existing text
+  void _showRepositionInstructions() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        title: Text('Reposition Text'),
+        content: Text('Tap anywhere on the canvas to move the text to that location.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _cleanupTextEditing();
+            },
+            child: Text('Cancel'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -655,26 +709,48 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   /// Update existing text with new content and/or position
   void _updateExistingText() {
-    if (_editingTextIndex == null) return;
+    if (_editingTextIndex == null || _editingTextIndex! >= _controller.paintHistory.length) {
+      // Safety check - invalid index
+      _cleanupTextEditing();
+      return;
+    }
     
-    final newText = _textController.text;
-    final currentInfo = _controller.paintHistory[_editingTextIndex!];
-    final newPosition = _pendingTextPosition ?? (currentInfo.offsets.isNotEmpty ? currentInfo.offsets[0] : Offset.zero);
+    final newText = _textController.text.trim();
+    if (newText.isEmpty) {
+      // Don't update with empty text
+      _cleanupTextEditing();
+      return;
+    }
     
-    // Create updated PaintInfo
-    final updatedInfo = PaintInfo(
-      mode: PaintMode.text,
-      text: newText,
-      offsets: [newPosition],
-      color: currentInfo.color,
-      strokeWidth: currentInfo.strokeWidth,
-    );
-    
-    // Replace the existing text in history
-    _controller.paintHistory[_editingTextIndex!] = updatedInfo;
-    _controller.notifyListeners();
-    
-    // Clean up
+    try {
+      final currentInfo = _controller.paintHistory[_editingTextIndex!];
+      final newPosition = _pendingTextPosition ?? (currentInfo.offsets.isNotEmpty ? currentInfo.offsets[0] : Offset.zero);
+      
+      // Create updated PaintInfo
+      final updatedInfo = PaintInfo(
+        mode: PaintMode.text,
+        text: newText,
+        offsets: [newPosition],
+        color: currentInfo.color,
+        strokeWidth: currentInfo.strokeWidth,
+      );
+      
+      // Replace the existing text in history
+      _controller.paintHistory[_editingTextIndex!] = updatedInfo;
+      
+      // Force a repaint to show the updated text
+      setState(() {});
+      _controller.notifyListeners();
+      
+    } catch (e) {
+      print('Error updating text: $e');
+    } finally {
+      _cleanupTextEditing();
+    }
+  }
+
+  /// Clean up text editing state
+  void _cleanupTextEditing() {
     _editingTextIndex = null;
     _pendingTextPosition = null;
     _textController.clear();
