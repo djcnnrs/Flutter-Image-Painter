@@ -14,10 +14,11 @@ class EnhancedImagePainterConfig {
   final bool showFillOption;
   final bool toolbarAtTop;
   final Color? toolbarBackgroundColor;
-  final bool enableAutoCrop;
-  // Removed callback parameters - FlutterFlow doesn't support callbacks in config
+  final Future<void> Function()? onSave;
+  final void Function()? onUndo;
+  final void Function()? onClear;
 
-  EnhancedImagePainterConfig({
+  const EnhancedImagePainterConfig({
     this.enabledModes = const [PaintMode.freeStyle, PaintMode.line, PaintMode.rect, PaintMode.circle, PaintMode.text],
     this.defaultStrokeWidth = 2.0,
     this.defaultColor = Colors.red,
@@ -26,21 +27,21 @@ class EnhancedImagePainterConfig {
     this.showFillOption = true,
     this.toolbarAtTop = false,
     this.toolbarBackgroundColor,
-    this.enableAutoCrop = false,
-    // No callback parameters for FlutterFlow compatibility
+    this.onSave,
+    this.onUndo,
+    this.onClear,
   });
 }
 
 /// Enhanced Image Painter Widget with all functionality
 class EnhancedImagePainter extends StatefulWidget {
-  EnhancedImagePainter({
+  const EnhancedImagePainter({
     Key? key,
     required this.width,
     required this.height,
     required this.bgImage,
-    EnhancedImagePainterConfig? config,
-  }) : config = config ?? EnhancedImagePainterConfig(),
-       super(key: key);
+    this.config = const EnhancedImagePainterConfig(),
+  }) : super(key: key);
 
   final double width;
   final double height;
@@ -62,10 +63,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   // Text positioning
   Offset? _pendingTextPosition;
   
-  // Text editing - simplified
+  // Text editing
   int? _editingTextIndex;
+  DateTime? _lastTapTime;
+  Offset? _lastTapPosition;
+  DateTime? _lastClickTime;
   
-  // Text dragging - simplified
+  // Text dragging
   bool _isDraggingText = false;
   int? _draggingTextIndex;
   Offset? _dragStartPosition;
@@ -87,7 +91,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _initializeCanvas();
       
     } catch (e) {
-      print('Error in initState: $e');
+      debugPrint('Error in initState: $e');
       rethrow;
     }
   }
@@ -96,9 +100,9 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     setState(() => _isLoading = true);
 
     try {
-      await _setupBackground(widget.bgImage);
+      await _setupBackground();
     } catch (e) {
-      print('Error initializing canvas: $e');
+      debugPrint('Error initializing canvas: $e');
       _actualWidth = widget.width;
       _actualHeight = widget.height;
       _controller.setBackgroundType(BackgroundType.blankCanvas);
@@ -107,8 +111,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     }
   }
 
-  Future<void> _setupBackground([String? bgImageOverride]) async {
-    final bgImage = (bgImageOverride ?? widget.bgImage)?.trim();
+  Future<void> _setupBackground() async {
+    final bgImage = widget.bgImage?.trim();
     
     if (bgImage == null || bgImage.isEmpty || bgImage == "Blank Canvas") {
       _controller.setBackgroundType(BackgroundType.blankCanvas);
@@ -144,51 +148,21 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     }
   }
 
-  /// Public method to export the image (signature package style)
-  Future<Uint8List?> exportImage() async {
-    return _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: true);
-  }
-  
-  /// Public method to export the image without auto-crop  
-  Future<Uint8List?> exportImageFullSize() async {
-    return _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: false);
-  }
-
-  /// Export image with auto-crop (if enabled in config)
-  Future<Uint8List?> exportImageCropped() async {
-    if (widget.config.enableAutoCrop) {
-      return await _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: true);
-    } else {
-      return await _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: false);
-    }
-  }
-
-  /// Public method to update background dynamically
-  Future<void> updateBackground(String? bgImage) async {
-    setState(() => _isLoading = true);
-    
-    try {
-      await _setupBackground(bgImage);
-      // Force repaint after background change
-      _controller.markForRepaint();
-      _controller.notifyListeners();
-    } catch (e) {
-      print('Error updating background: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
+  /// Public method to export the image
+  Future<Uint8List?> exportImage({bool autoCrop = false}) async {
+    return await _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: autoCrop);
   }
 
   /// Public method to undo last action
   void undoLastAction() {
     _controller.undo();
-    // Removed callback - FlutterFlow doesn't support callbacks
+    if (widget.config.onUndo != null) widget.config.onUndo!();
   }
 
   /// Public method to clear canvas
   void clearCanvas() {
     _controller.clear();
-    // Removed callback - FlutterFlow doesn't support callbacks
+    if (widget.config.onClear != null) widget.config.onClear!();
     
     // Show feedback message
     ScaffoldMessenger.of(context).showSnackBar(
@@ -198,58 +172,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         backgroundColor: Colors.blue,
       ),
     );
-  }
-
-  /// Public method to dynamically update background
-  Future<void> updateBackground(String? newBgImage) async {
-    if (newBgImage == widget.bgImage) return; // No change needed
-    
-    setState(() => _isLoading = true);
-    
-    try {
-      final bgImage = newBgImage?.trim();
-      
-      if (bgImage == null || bgImage.isEmpty || bgImage == "Blank Canvas") {
-        _controller.setBackgroundType(BackgroundType.blankCanvas);
-        _controller.setBackgroundImage(null);
-        _actualWidth = widget.width;
-        _actualHeight = widget.height;
-      } else if (bgImage == "Graph Paper") {
-        _controller.setBackgroundType(BackgroundType.graphPaper);
-        _controller.setBackgroundImage(null);
-        _actualWidth = widget.width;
-        _actualHeight = widget.height;
-      } else if (bgImage == "Lined Notebook") {
-        _controller.setBackgroundType(BackgroundType.linedNotebook);
-        _controller.setBackgroundImage(null);
-        _actualWidth = widget.width;
-        _actualHeight = widget.height;
-      } else {
-        // Network image - don't change if we already have a network image
-        if (_controller.backgroundType != BackgroundType.networkImage) {
-          await _controller.loadBackgroundImage(bgImage);
-          _controller.setBackgroundType(BackgroundType.networkImage);
-          _controller.setBackgroundImageUrl(bgImage);
-          
-          if (_controller.backgroundImage != null) {
-            _actualWidth = _controller.backgroundImage!.width.toDouble();
-            _actualHeight = _controller.backgroundImage!.height.toDouble();
-          } else {
-            _actualWidth = widget.width;
-            _actualHeight = widget.height;
-          }
-        }
-      }
-      
-      // Force repaint
-      _controller.markForRepaint();
-      _controller.notifyListeners();
-      
-    } catch (e) {
-      print('Error updating background: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
   }
 
   @override
@@ -275,12 +197,15 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   Widget _buildCanvas() {
-    return GestureDetector(
-      onTapDown: (details) {
-        final offset = details.localPosition;
-        
-        // Always check for text first (in any mode)
-        final textIndex = _findTextAtPosition(offset);
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return GestureDetector(
+          onTapDown: (details) {
+            final offset = details.localPosition;
+            
+            // Always check for text first (in any mode)
+            final textIndex = _findTextAtPosition(offset);
             
             // Handle text mode
             if (_controller.mode == PaintMode.text) {
@@ -323,7 +248,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               _draggingTextIndex = null;
               _dragStartPosition = null;
             }
-          },
+            
+            // Handle potential text editing (double-click detection) for all modes
+            _lastTapPosition = offset;
+            _lastTapTime = DateTime.now();
+            _handleTapForTextEditing();
           },
           onPanStart: (details) {
             final offset = details.localPosition;
@@ -428,11 +357,10 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             }
             _controller.resetStartAndEnd();
           },
-          child: ClipRect(          child: Container(
+          child: Container(
             width: _actualWidth,
             height: _actualHeight,
             color: Colors.white,
-            clipBehavior: Clip.hardEdge, // Alternative to ClipRect
             child: Stack(
               children: [
                 CustomPaint(
@@ -463,6 +391,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             ),
           ),
         );
+      },
+    );
   }
 
   Widget _buildToolbar() {
@@ -470,9 +400,12 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       height: 60,
       padding: const EdgeInsets.all(4),
       color: widget.config.toolbarBackgroundColor ?? Colors.grey[800], // Darker background
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               _buildModeSelector(),
               if (widget.config.showColorTool) _buildColorSelector(),
               if (widget.config.showStrokeTool) _buildStrokeSelector(),
@@ -508,38 +441,15 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               IconButton(
                 icon: Icon(Icons.save, color: _controller.paintHistory.isEmpty ? Colors.grey : Colors.white),
                 onPressed: _controller.paintHistory.isEmpty ? null : () async {
-                  // FlutterFlow compatible: Direct save functionality
-                  try {
-                    final bytes = await exportImageCropped();
-                    if (bytes != null) {
-                      print('Image exported successfully: ${bytes.length} bytes');
-                      // Show success feedback
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Image saved successfully!'),
-                            backgroundColor: Colors.green,
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    }
-                  } catch (e) {
-                    print('Error saving image: $e');
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error saving image'),
-                          backgroundColor: Colors.red,
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    }
+                  if (widget.config.onSave != null) {
+                    await widget.config.onSave!();
                   }
                 },
                 tooltip: _controller.paintHistory.isEmpty ? 'Canvas is empty' : 'Save',
               ),
             ],
+          );
+        },
       ),
     );
   }
@@ -683,7 +593,26 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   /// Handle tap events for potential text editing
-  /// Edit existing text at the given index (simplified - no double-click)
+  void _handleTapForTextEditing() {
+    if (_lastTapPosition == null) return;
+    
+    final now = DateTime.now();
+    
+    // Check for double-click (within 300ms of previous click)
+    if (_lastClickTime != null && now.difference(_lastClickTime!).inMilliseconds < 300) {
+      final textIndex = _findTextAtPosition(_lastTapPosition!);
+      if (textIndex != null) {
+        _editTextAtIndex(textIndex);
+        _lastClickTime = null; // Reset to prevent triple-click
+        return;
+      }
+    }
+    
+    // Store this click time for next double-click check
+    _lastClickTime = now;
+  }
+
+  /// Edit existing text at the given index
   void _editTextAtIndex(int index) {
     final textInfo = _controller.paintHistory[index];
     if (textInfo.mode != PaintMode.text || textInfo.text == null) return;
@@ -831,7 +760,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       }
       
     } catch (e) {
-      print('Error updating text content: $e');
+      debugPrint('Error updating text content: $e');
     } finally {
       _cleanupTextEditing();
     }
@@ -870,7 +799,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       }
       
     } catch (e) {
-      print('Error updating text position: $e');
+      debugPrint('Error updating text position: $e');
     } finally {
       _cleanupTextEditing();
     }
