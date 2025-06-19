@@ -32,8 +32,6 @@ class _SimpleImagePainterState extends State<SimpleImagePainter> {
   late EnhancedImagePainterController _controller;
   List<Offset> _currentStroke = [];
   bool _isDirty = false;
-  DateTime _lastUpdateTime = DateTime.now();
-  static const _updateThreshold = Duration(milliseconds: 16); // ~60 FPS
 
   @override
   void initState() {
@@ -90,18 +88,10 @@ class _SimpleImagePainterState extends State<SimpleImagePainter> {
               _controller.setStart(details.localPosition);
               _controller.setInProgress(true);
             },            onPanUpdate: (details) {
-              // Throttle updates to improve performance
-              final now = DateTime.now();
-              if (now.difference(_lastUpdateTime) >= _updateThreshold) {
-                _lastUpdateTime = now;
-                
-                // Batch updates - only add to current stroke and update end position
-                _currentStroke.add(details.localPosition);
-                _controller.setEnd(details.localPosition);
-                
-                // Add the point to offsets for real-time preview
-                _controller.addOffsets(details.localPosition);
-              }
+              // Add the point to offsets for real-time preview
+              _currentStroke.add(details.localPosition);
+              _controller.setEnd(details.localPosition);
+              _controller.addOffsets(details.localPosition);
             },onPanEnd: (details) {
               _controller.setInProgress(false);
               

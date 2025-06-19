@@ -54,17 +54,11 @@ class EnhancedImagePainter extends StatefulWidget {
 
 class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   late EnhancedImagePainterController _controller;
-  late TransformationController _transformationController;
   late TextEditingController _textController;
   
   bool _isLoading = false;
   double _actualWidth = 0;
   double _actualHeight = 0;
-  
-  // Performance optimization variables
-  DateTime _lastUpdateTime = DateTime.now();
-  static const _updateThreshold = Duration(milliseconds: 16); // ~60 FPS
-  List<Offset> _currentStroke = [];
   
   // Text positioning
   Offset? _pendingTextPosition;
@@ -73,9 +67,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   int? _editingTextIndex;
   DateTime? _lastTapTime;
   Offset? _lastTapPosition;
-  static DateTime? _lastClickTime;
-  bool _isRepositioning = false; // Track repositioning mode
-  Offset? _repositionPreviewPosition; // Track cursor position during repositioning
+  DateTime? _lastClickTime;
+  
+  // Text dragging
+  bool _isDraggingText = false;
+  int? _draggingTextIndex;
+  Offset? _dragStartPosition;
+  Offset? _repositionPreviewPosition; // Used for drag preview
 
   @override
   void initState() {
@@ -83,7 +81,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     
     try {
       _controller = EnhancedImagePainterController();
-      _transformationController = TransformationController();
       _textController = TextEditingController();
       
       // Set initial values from config
@@ -94,7 +91,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _initializeCanvas();
       
     } catch (e) {
-      print('Error in initState: $e');
+      debugPrint('Error in initState: $e');
       rethrow;
     }
   }
@@ -105,7 +102,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     try {
       await _setupBackground();
     } catch (e) {
-      print('Error initializing canvas: $e');
+      debugPrint('Error initializing canvas: $e');
       _actualWidth = widget.width;
       _actualHeight = widget.height;
       _controller.setBackgroundType(BackgroundType.blankCanvas);
@@ -169,7 +166,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     
     // Show feedback message
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+      const SnackBar(
         content: Text('Canvas cleared'),
         duration: Duration(seconds: 1),
         backgroundColor: Colors.blue,
@@ -180,7 +177,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   @override
   void dispose() {
     _controller.dispose();
-    _transformationController.dispose();
     _textController.dispose();
     super.dispose();
   }
@@ -208,14 +204,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onTapDown: (details) {
             final offset = details.localPosition;
             
-            // Handle repositioning mode first
-            if (_isRepositioning && _editingTextIndex != null) {
-              _updateTextPosition(offset);
-              _isRepositioning = false;
-              _repositionPreviewPosition = null;
-              return;
-            }
-            
             // Handle text mode - but check for existing text first
             if (_controller.mode == PaintMode.text) {
               // Check if clicking on existing text for editing
@@ -231,13 +219,28 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                 return;
               }
             }
+            
+            // Check if starting to drag text (in any mode)
+            final textIndex = _findTextAtPosition(offset);
+            if (textIndex != null) {
+              _dragStartPosition = offset;
+              _draggingTextIndex = textIndex;
+              // Don't set _isDraggingText yet - wait for actual drag movement
+            }
           },
           onTapUp: (details) {
             final offset = details.localPosition;
             
-            // Skip if we already handled this in onTapDown (text mode or repositioning)
-            if (_controller.mode == PaintMode.text || _isRepositioning) {
+            // Skip if we already handled this in onTapDown (text mode)
+            if (_controller.mode == PaintMode.text) {
               return;
+            }
+            
+            // If we were potentially dragging but didn't actually drag, treat as tap
+            if (_draggingTextIndex != null && !_isDraggingText) {
+              // This was just a tap on text, not a drag - clear drag state
+              _draggingTextIndex = null;
+              _dragStartPosition = null;
             }
             
             // Handle potential text editing (double-click detection) only when NOT in text mode
@@ -248,9 +251,21 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onPanStart: (details) {
             final offset = details.localPosition;
             
-            // Skip pan gestures in text mode or repositioning mode
-            if (_controller.mode == PaintMode.text || _isRepositioning) {
+            // Skip pan gestures in text mode 
+            if (_controller.mode == PaintMode.text) {
               return;
+            }
+            
+            // Check if we should start dragging text
+            if (_draggingTextIndex != null && _dragStartPosition != null) {
+              final dragDistance = (_dragStartPosition! - offset).distance;
+              if (dragDistance > 5.0) { // Threshold to differentiate tap from drag
+                _isDraggingText = true;
+                setState(() {
+                  _repositionPreviewPosition = offset;
+                });
+                return;
+              }
             }
             
             _controller.setStart(offset);
@@ -266,11 +281,16 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onPanUpdate: (details) {
             final offset = details.localPosition;
             
-            // Handle repositioning preview
-            if (_isRepositioning) {
+            // Handle text dragging
+            if (_isDraggingText && _draggingTextIndex != null) {
               setState(() {
                 _repositionPreviewPosition = offset;
               });
+              return;
+            }
+            
+            // Skip other pan updates in text mode 
+            if (_controller.mode == PaintMode.text) {
               return;
             }
             
@@ -285,6 +305,22 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             }
           },
           onPanEnd: (details) {
+            // Handle text dragging completion
+            if (_isDraggingText && _draggingTextIndex != null && _repositionPreviewPosition != null) {
+              _updateTextPosition(_repositionPreviewPosition!);
+              _isDraggingText = false;
+              _draggingTextIndex = null;
+              _dragStartPosition = null;
+              _repositionPreviewPosition = null;
+              return;
+            }
+            
+            // Clear any potential drag state
+            _isDraggingText = false;
+            _draggingTextIndex = null;
+            _dragStartPosition = null;
+            _repositionPreviewPosition = null;
+            
             _controller.setInProgress(false);
             
             if (_controller.start != null && _controller.end != null) {
@@ -311,18 +347,18 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                     size: Size(_actualWidth, _actualHeight),
                   ),
                 ),
-                // Show repositioning preview
-                if (_isRepositioning && _repositionPreviewPosition != null && _editingTextIndex != null)
+                // Show text dragging preview
+                if (_isDraggingText && _repositionPreviewPosition != null && _draggingTextIndex != null)
                   Positioned(
                     left: _repositionPreviewPosition!.dx,
                     top: _repositionPreviewPosition!.dy,
                     child: Opacity(
                       opacity: 0.7,
                       child: Text(
-                        _getTextBeingRepositioned(),
+                        _getTextBeingDragged(),
                         style: TextStyle(
-                          color: _controller.paintHistory[_editingTextIndex!].color,
-                          fontSize: _controller.paintHistory[_editingTextIndex!].strokeWidth * 4,
+                          color: _controller.paintHistory[_draggingTextIndex!].color,
+                          fontSize: _controller.paintHistory[_draggingTextIndex!].strokeWidth * 4,
                           decoration: TextDecoration.none,
                         ),
                       ),
@@ -628,27 +664,17 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       barrierDismissible: false, // Prevent accidental dismissal
       builder: (context) => AlertDialog(
         title: Text('Edit Text'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _textController,
-              autofocus: true,
-              decoration: InputDecoration(hintText: 'Edit text'),
-              onSubmitted: (text) {
-                // Allow Enter key to update
-                if (text.trim().isNotEmpty) {
-                  Navigator.pop(context);
-                  _updateTextContent();
-                }
-              },
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Use Update to change text, or Reposition to move it',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ],
+        content: TextField(
+          controller: _textController,
+          autofocus: true,
+          decoration: InputDecoration(hintText: 'Edit text'),
+          onSubmitted: (text) {
+            // Allow Enter key to update
+            if (text.trim().isNotEmpty) {
+              Navigator.pop(context);
+              _updateTextContent();
+            }
+          },
         ),
         actions: [
           TextButton(
@@ -669,27 +695,9 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             },
             child: Text('Update'),
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Start position selection mode
-              if (_textController.text.trim().isNotEmpty) {
-                _startTextRepositioning();
-              } else {
-                _cleanupTextEditing();
-              }
-            },
-            child: Text('Reposition'),
-          ),
         ],
       ),
     );
-  }
-
-  /// Start text repositioning mode
-  void _startTextRepositioning() {
-    _isRepositioning = true;
-    // No dialog - just start repositioning mode immediately
   }
 
   /// Update only the text content, keep same position
@@ -729,21 +737,23 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       }
       
     } catch (e) {
-      print('Error updating text content: $e');
+      debugPrint('Error updating text content: $e');
     } finally {
       _cleanupTextEditing();
     }
   }
 
   /// Update text position (used when repositioning)
+  /// Update text position (used when repositioning via drag-and-drop)
   void _updateTextPosition(Offset newPosition) {
-    if (_editingTextIndex == null || _editingTextIndex! >= _controller.paintHistory.length) {
+    final textIndex = _draggingTextIndex ?? _editingTextIndex;
+    if (textIndex == null || textIndex >= _controller.paintHistory.length) {
       _cleanupTextEditing();
       return;
     }
     
     try {
-      final currentInfo = _controller.paintHistory[_editingTextIndex!];
+      final currentInfo = _controller.paintHistory[textIndex];
       
       // Create updated PaintInfo with new position but same text
       final updatedInfo = PaintInfo(
@@ -755,7 +765,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       );
       
       // Replace the existing text in history
-      _controller.paintHistory[_editingTextIndex!] = updatedInfo;
+      _controller.paintHistory[textIndex] = updatedInfo;
       
       // Force immediate repaint
       _controller.markForRepaint();
@@ -766,7 +776,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       }
       
     } catch (e) {
-      print('Error updating text position: $e');
+      debugPrint('Error updating text position: $e');
     } finally {
       _cleanupTextEditing();
     }
@@ -777,8 +787,10 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     _editingTextIndex = null;
     _pendingTextPosition = null;
     _textController.clear();
-    _isRepositioning = false; // Reset repositioning mode
-    _repositionPreviewPosition = null; // Reset preview position
+    _isDraggingText = false;
+    _draggingTextIndex = null;
+    _dragStartPosition = null;
+    _repositionPreviewPosition = null;
   }
 
   IconData _getModeIcon(PaintMode mode) {
@@ -816,6 +828,15 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return '';
   }
 
+  /// Get the text content being dragged
+  String _getTextBeingDragged() {
+    if (_draggingTextIndex != null && _draggingTextIndex! < _controller.paintHistory.length) {
+      final textInfo = _controller.paintHistory[_draggingTextIndex!];
+      return textInfo.text ?? '';
+    }
+    return '';
+  }
+
   /// Check if a tap position hits any existing text
   int? _findTextAtPosition(Offset position) {
     for (int i = _controller.paintHistory.length - 1; i >= 0; i--) {
@@ -832,18 +853,32 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return null;
   }
 
-  /// Calculate the bounds of a text element
+  /// Calculate the bounds of a text element more accurately
   Rect _calculateTextBounds(String text, Offset position, double fontSize) {
-    // Estimate text dimensions
-    final width = text.length * fontSize * 0.6;
-    final height = fontSize;
-    
-    return Rect.fromLTWH(
-      position.dx,
-      position.dy,
-      width,
-      height,
+    // Create a TextPainter to measure the actual text size
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(fontSize: fontSize),
+      ),
+      textDirection: TextDirection.ltr,
     );
+    textPainter.layout();
+    
+    // Add some padding to make selection easier
+    const padding = 8.0;
+    
+    final bounds = Rect.fromLTWH(
+      position.dx - padding,
+      position.dy - padding,
+      textPainter.width + (padding * 2),
+      textPainter.height + (padding * 2),
+    );
+    
+    // Dispose the text painter to prevent memory leaks
+    textPainter.dispose();
+    
+    return bounds;
   }
 }
 

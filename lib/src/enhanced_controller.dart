@@ -245,7 +245,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
       return byteData?.buffer.asUint8List();
     } catch (e) {
-      print('Export error: $e');
+      debugPrint('Export error: $e');
       return null;
     } finally {
       _isExporting = false;
@@ -322,7 +322,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       _backgroundImage = await completer.future;
       notifyListeners();
     } catch (e) {
-      print('Failed to load background image: $e');
+      debugPrint('Failed to load background image: $e');
     }
   }
 
@@ -520,6 +520,7 @@ class EnhancedImageCustomPainter extends CustomPainter {
     );
     textPainter.layout();
     textPainter.paint(canvas, offset);
+    textPainter.dispose(); // Prevent memory leaks
   }
 
   void _drawArrow(Canvas canvas, Offset start, Offset end, Paint paint) {
