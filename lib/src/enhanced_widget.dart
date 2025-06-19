@@ -204,34 +204,43 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        return GestureDetector(
-          onTapDown: (details) {
-            final offset = details.localPosition;
-            
-            // Handle repositioning mode first
-            if (_isRepositioning && _editingTextIndex != null) {
-              _updateTextPosition(offset);
-              _isRepositioning = false;
-              _repositionPreviewPosition = null;
-              return;
-            }
-            
-            // Handle text mode - but check for existing text first
-            if (_controller.mode == PaintMode.text) {
-              // Check if clicking on existing text for editing
-              final textIndex = _findTextAtPosition(offset);
-              if (textIndex != null) {
-                // Clicking on existing text - edit it
-                _editTextAtIndex(textIndex);
-                return;
-              } else {
-                // Clicking on empty space - add new text
-                _pendingTextPosition = offset;
-                _openTextDialog();
-                return;
-              }
+        return MouseRegion(
+          onHover: (event) {
+            // Update preview position during repositioning when mouse moves
+            if (_isRepositioning) {
+              setState(() {
+                _repositionPreviewPosition = event.localPosition;
+              });
             }
           },
+          child: GestureDetector(
+            onTapDown: (details) {
+              final offset = details.localPosition;
+              
+              // Handle repositioning mode first
+              if (_isRepositioning && _editingTextIndex != null) {
+                _updateTextPosition(offset);
+                _isRepositioning = false;
+                _repositionPreviewPosition = null;
+                return;
+              }
+              
+              // Handle text mode - but check for existing text first
+              if (_controller.mode == PaintMode.text) {
+                // Check if clicking on existing text for editing
+                final textIndex = _findTextAtPosition(offset);
+                if (textIndex != null) {
+                  // Clicking on existing text - edit it
+                  _editTextAtIndex(textIndex);
+                  return;
+                } else {
+                  // Clicking on empty space - add new text
+                  _pendingTextPosition = offset;
+                  _openTextDialog();
+                  return;
+                }
+              }
+            },
           onTapUp: (details) {
             final offset = details.localPosition;
             
@@ -309,6 +318,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                   painter: EnhancedImageCustomPainter(
                     controller: _controller,
                     size: Size(_actualWidth, _actualHeight),
+                    hideTextIndex: _isRepositioning ? _editingTextIndex : null, // Hide original during repositioning
                   ),
                 ),
                 // Show repositioning preview
@@ -316,8 +326,13 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                   Positioned(
                     left: _repositionPreviewPosition!.dx,
                     top: _repositionPreviewPosition!.dy,
-                    child: Opacity(
-                      opacity: 0.7,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.8),
+                        border: Border.all(color: Colors.blue, width: 1),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      padding: EdgeInsets.all(2),
                       child: Text(
                         _getTextBeingRepositioned(),
                         style: TextStyle(
@@ -331,7 +346,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               ],
             ),
           ),
-        );
+        ),
       },
     );
   }
@@ -401,10 +416,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       tooltip: 'Drawing Mode: ${_getModeLabel(_controller.mode)}',
       onSelected: (mode) {
         _controller.setMode(mode);
-        // Show instruction for text mode
-        if (mode == PaintMode.text) {
-          _showTextModeInstructions();
-        }
+        // No instructions needed - just switch to text mode
       },
       itemBuilder: (context) {
         return widget.config.enabledModes.map((mode) {
@@ -693,37 +705,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void _startTextRepositioning() {
     _isRepositioning = true;
     // No dialog - just start repositioning mode immediately
-  }
-
-  /// Show text mode instructions when user selects text mode
-  void _showTextModeInstructions() {
-    _showTextPositionInstructions();
-  }
-
-  /// Show instructions for text positioning (used for both new text and repositioning)
-  void _showTextPositionInstructions({VoidCallback? onCancel}) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => AlertDialog(
-        title: Text('Text Mode'),
-        content: Text('Tap anywhere on the canvas to place the text at that location'),
-        actions: [
-          if (onCancel != null)
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                onCancel();
-              },
-              child: Text('Cancel'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 
   /// Update only the text content, keep same position

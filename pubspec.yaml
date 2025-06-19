@@ -1,6 +1,6 @@
 name: enhanced_image_painter
 description: A comprehensive Flutter package for drawing, annotating, and editing images with advanced features including customizable backgrounds, export functionality, and FlutterFlow integration.
-version: 1.1.6
+version: 1.1.7
 homepage: https://github.com/djcnnrs/Flutter-Image-Painter
 
 environment:
