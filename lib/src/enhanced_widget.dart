@@ -204,13 +204,14 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onTapDown: (details) {
             final offset = details.localPosition;
             
-            // Handle text mode - but check for existing text first
+            // Handle text mode
             if (_controller.mode == PaintMode.text) {
-              // Check if clicking on existing text for editing
+              // Check if clicking on existing text
               final textIndex = _findTextAtPosition(offset);
               if (textIndex != null) {
-                // Clicking on existing text - edit it
-                _editTextAtIndex(textIndex);
+                // Prepare for potential drag, but don't open dialog yet
+                _dragStartPosition = offset;
+                _draggingTextIndex = textIndex;
                 return;
               } else {
                 // Clicking on empty space - add new text
@@ -220,30 +221,30 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               }
             }
             
-            // Check if starting to drag text (in any mode)
+            // Check if starting to drag text (in non-text modes)
             final textIndex = _findTextAtPosition(offset);
             if (textIndex != null) {
               _dragStartPosition = offset;
               _draggingTextIndex = textIndex;
-              // Don't set _isDraggingText yet - wait for actual drag movement
             }
           },
           onTapUp: (details) {
             final offset = details.localPosition;
             
-            // Skip if we already handled this in onTapDown (text mode)
-            if (_controller.mode == PaintMode.text) {
+            // If we were potentially dragging but didn't actually drag, treat as tap
+            if (_draggingTextIndex != null && !_isDraggingText) {
+              // This was just a tap on text, not a drag
+              if (_controller.mode == PaintMode.text) {
+                // In text mode, single tap on text opens edit dialog
+                _editTextAtIndex(_draggingTextIndex!);
+              }
+              // Clear drag state
+              _draggingTextIndex = null;
+              _dragStartPosition = null;
               return;
             }
             
-            // If we were potentially dragging but didn't actually drag, treat as tap
-            if (_draggingTextIndex != null && !_isDraggingText) {
-              // This was just a tap on text, not a drag - clear drag state
-              _draggingTextIndex = null;
-              _dragStartPosition = null;
-            }
-            
-            // Handle potential text editing (double-click detection) only when NOT in text mode
+            // Handle potential text editing (double-click detection) for all modes
             _lastTapPosition = offset;
             _lastTapTime = DateTime.now();
             _handleTapForTextEditing();
@@ -251,12 +252,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onPanStart: (details) {
             final offset = details.localPosition;
             
-            // Skip pan gestures in text mode 
-            if (_controller.mode == PaintMode.text) {
-              return;
-            }
-            
-            // Check if we should start dragging text
+            // Check if we should start dragging text (works in any mode including text mode)
             if (_draggingTextIndex != null && _dragStartPosition != null) {
               final dragDistance = (_dragStartPosition! - offset).distance;
               if (dragDistance > 5.0) { // Threshold to differentiate tap from drag
@@ -266,6 +262,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                 });
                 return;
               }
+            }
+            
+            // Skip other pan gestures in text mode (but not text dragging)
+            if (_controller.mode == PaintMode.text) {
+              return;
             }
             
             _controller.setStart(offset);
@@ -571,7 +572,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   /// Handle tap events for potential text editing
   void _handleTapForTextEditing() {
-    if (_lastTapPosition == null || _controller.mode == PaintMode.text) return; // Don't handle in text mode
+    if (_lastTapPosition == null) return;
     
     final now = DateTime.now();
     
