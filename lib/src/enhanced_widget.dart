@@ -205,9 +205,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             onTapDown: (details) {
               final offset = details.localPosition;
               
-              // Ensure we're within the canvas bounds
-              if (!_isWithinCanvasBounds(offset)) return;
-              
               // Always check for text first (in any mode)
               final textIndex = _findTextAtPosition(offset);
               
@@ -242,9 +239,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onTapUp: (details) {
             final offset = details.localPosition;
             
-            // Ensure we're within the canvas bounds
-            if (!_isWithinCanvasBounds(offset)) return;
-            
             // If we were potentially dragging text but didn't actually drag
             if (_draggingTextIndex != null && !_isDraggingText) {
               if (_controller.mode == PaintMode.text) {
@@ -263,9 +257,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           },
           onPanStart: (details) {
             final offset = details.localPosition;
-            
-            // Ensure we're within the canvas bounds
-            if (!_isWithinCanvasBounds(offset)) return;
             
             // If we have a potential text drag, just mark that we're starting a pan
             if (_draggingTextIndex != null && _dragStartPosition != null) {
@@ -297,9 +288,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onPanUpdate: (details) {
             final offset = details.localPosition;
             
-            // Ensure we're within the canvas bounds for drawing operations
-            if (!_isWithinCanvasBounds(offset) && !_isDraggingText) return;
-            
             // Check if we should start dragging text (detect actual movement here)
             if (_draggingTextIndex != null && !_isDraggingText && _dragStartPosition != null) {
               final dragDistance = (_dragStartPosition! - offset).distance;
@@ -312,7 +300,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               }
             }
             
-            // Handle ongoing text dragging (allow dragging outside canvas for text repositioning)
+            // Handle ongoing text dragging
             if (_isDraggingText && _draggingTextIndex != null) {
               setState(() {
                 _repositionPreviewPosition = offset;
@@ -580,14 +568,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         ),
       ],
     );
-  }
-
-  /// Helper method to check if a position is within the canvas bounds
-  bool _isWithinCanvasBounds(Offset position) {
-    return position.dx >= 0 && 
-           position.dy >= 0 && 
-           position.dx <= _actualWidth && 
-           position.dy <= _actualHeight;
   }
 
   void _addEndPoints() {
