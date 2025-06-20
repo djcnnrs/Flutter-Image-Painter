@@ -200,42 +200,41 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        return ClipRect(
-          child: GestureDetector(
-            onTapDown: (details) {
-              final offset = details.localPosition;
-              
-              // Always check for text first (in any mode)
-              final textIndex = _findTextAtPosition(offset);
-              
-              // Handle text mode
-              if (_controller.mode == PaintMode.text) {
-                if (textIndex != null) {
-                  // Clicking on existing text - prepare for potential drag or edit
-                  _dragStartPosition = offset;
-                  _draggingTextIndex = textIndex;
-                  return;
-                } else {
-                  // Clicking on empty space - add new text
-                  _pendingTextPosition = offset;
-                  _openTextDialog();
-                  return;
-                }
-              }
-              
-              // Handle non-text modes
+        return GestureDetector(
+          onTapDown: (details) {
+            final offset = details.localPosition;
+            
+            // Always check for text first (in any mode)
+            final textIndex = _findTextAtPosition(offset);
+            
+            // Handle text mode
+            if (_controller.mode == PaintMode.text) {
               if (textIndex != null) {
-                // Clicking on text in non-text mode - prepare for potential drag
+                // Clicking on existing text - prepare for potential drag or edit
                 _dragStartPosition = offset;
                 _draggingTextIndex = textIndex;
-                // Don't start drawing gestures when clicking on text
+                return;
+              } else {
+                // Clicking on empty space - add new text
+                _pendingTextPosition = offset;
+                _openTextDialog();
                 return;
               }
-              
-              // No text clicked - clear any text drag state
-              _draggingTextIndex = null;
-              _dragStartPosition = null;
-            },
+            }
+            
+            // Handle non-text modes
+            if (textIndex != null) {
+              // Clicking on text in non-text mode - prepare for potential drag
+              _dragStartPosition = offset;
+              _draggingTextIndex = textIndex;
+              // Don't start drawing gestures when clicking on text
+              return;
+            }
+            
+            // No text clicked - clear any text drag state
+            _draggingTextIndex = null;
+            _dragStartPosition = null;
+          },
           onTapUp: (details) {
             final offset = details.localPosition;
             
