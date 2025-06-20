@@ -183,9 +183,22 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   @override
   Widget build(BuildContext context) {
+    // Determine if we're using a network image
+    final bgImage = widget.bgImage?.trim();
+    final bool isNetworkImage = bgImage != null && 
+                               bgImage.isNotEmpty && 
+                               bgImage != "Blank Canvas" && 
+                               bgImage != "Graph Paper" && 
+                               bgImage != "Lined Notebook";
+    
+    // For network images, use the actual image dimensions
+    // For standard backgrounds, use the provided dimensions
+    final double containerWidth = isNetworkImage ? _actualWidth : widget.width;
+    final double containerHeight = isNetworkImage ? (_actualHeight + 60) : widget.height;
+    
     return Container(
-      width: _actualWidth,
-      height: _actualHeight + 60,
+      width: containerWidth,
+      height: containerHeight,
       child: Column(
         children: [
           if (widget.config.toolbarAtTop) _buildToolbar(),
