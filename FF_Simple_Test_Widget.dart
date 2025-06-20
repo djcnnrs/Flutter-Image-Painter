@@ -37,8 +37,6 @@ class _SimpleImagePainterState extends State<SimpleImagePainter> {
   void initState() {
     super.initState();
     _controller = EnhancedImagePainterController();
-    
-    // Listen to controller changes to trigger repaints
     _controller.addListener(_onControllerChange);
   }
 
@@ -66,7 +64,7 @@ class _SimpleImagePainterState extends State<SimpleImagePainter> {
   Widget build(BuildContext context) {
     final double actualWidth = widget.width ?? 300;
     final double actualHeight = widget.height ?? 200;
-    
+
     return Container(
       width: actualWidth,
       height: actualHeight,
@@ -82,29 +80,29 @@ class _SimpleImagePainterState extends State<SimpleImagePainter> {
             controller: _controller,
             size: Size(actualWidth, actualHeight),
           ),
-          child: GestureDetector(            onPanStart: (details) {
+          child: GestureDetector(
+            onPanStart: (details) {
               _currentStroke.clear();
               _currentStroke.add(details.localPosition);
               _controller.setStart(details.localPosition);
               _controller.setInProgress(true);
-            },            onPanUpdate: (details) {
-              // Add the point to offsets for real-time preview
+            },
+            onPanUpdate: (details) {
               _currentStroke.add(details.localPosition);
               _controller.setEnd(details.localPosition);
               _controller.addOffsets(details.localPosition);
-            },onPanEnd: (details) {
+            },
+            onPanEnd: (details) {
               _controller.setInProgress(false);
-              
-              // Create PaintInfo with all stroke points
-              _controller.addPaintInfo(PaintInfo(
-                mode: _controller.mode,
-                offsets: List.from(_currentStroke),
-                color: _controller.color,
-                strokeWidth: _controller.strokeWidth,
-                fill: _controller.fill,
-              ));
-              
-              // Clear temporary data
+              _controller.addPaintInfo(
+                PaintInfo(
+                  mode: _controller.mode,
+                  offsets: List.from(_currentStroke),
+                  color: _controller.color,
+                  strokeWidth: _controller.strokeWidth,
+                  fill: _controller.fill,
+                ),
+              );
               _controller.offsets.clear();
               _controller.resetStartAndEnd();
               _currentStroke.clear();
