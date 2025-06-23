@@ -53,6 +53,13 @@ class EnhancedImagePainter extends StatefulWidget {
 }
 
 class EnhancedImagePainterState extends State<EnhancedImagePainter> {
+  // Constants
+  static const double _toolbarHeight = 60.0;
+  static const double _textSizeMultiplier = 4.0;
+  static const int _doubleClickTimeoutMs = 300;
+  static const double _dragThreshold = 5.0;
+  static const double _textBoundsPadding = 8.0;
+  
   late EnhancedImagePainterController _controller;
   late TextEditingController _textController;
   
@@ -150,7 +157,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   /// Public method to export the image
   Future<Uint8List?> exportImage({bool autoCrop = false}) async {
-    return await _controller.exportImage(Size(_actualWidth, _actualHeight), autoCrop: autoCrop);
+    // Calculate the correct canvas dimensions for export using helper methods
+    final double exportWidth = _getCanvasWidth();
+    final double exportHeight = _getCanvasHeight();
+    
+    return await _controller.exportImage(Size(exportWidth, exportHeight), autoCrop: autoCrop);
   }
 
   /// Public method to undo last action
@@ -181,28 +192,52 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     super.dispose();
   }
 
+  /// Helper method to determine if we're using a network image
+  bool _isNetworkImage() {
+    final bgImage = widget.bgImage?.trim();
+    return bgImage != null && 
+           bgImage.isNotEmpty && 
+           bgImage != "Blank Canvas" && 
+           bgImage != "Graph Paper" && 
+           bgImage != "Lined Notebook";
+  }
+
+  /// Helper method to get canvas width
+  double _getCanvasWidth() {
+    return _isNetworkImage() ? _actualWidth : widget.width;
+  }  /// Helper method to get canvas height
+  double _getCanvasHeight() {
+    return _isNetworkImage() ? _actualHeight : (widget.height - _toolbarHeight);
+  }
+
+  /// Helper method to get container width
+  double _getContainerWidth() {
+    return _isNetworkImage() ? _actualWidth : widget.width;
+  }
+
+  /// Helper method to get container height
+  double _getContainerHeight() {
+    return _isNetworkImage() ? (_actualHeight + _toolbarHeight) : widget.height;
+  }
+
+  /// Helper method to calculate text font size from stroke width
+  double _getTextFontSize(double strokeWidth) {
+    return strokeWidth * _textSizeMultiplier;
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Determine if we're using a network image
-    final bgImage = widget.bgImage?.trim();
-    final bool isNetworkImage = bgImage != null && 
-                               bgImage.isNotEmpty && 
-                               bgImage != "Blank Canvas" && 
-                               bgImage != "Graph Paper" && 
-                               bgImage != "Lined Notebook";
-    
-    // For network images, use the actual image dimensions
-    // For standard backgrounds, use the provided dimensions
-    final double containerWidth = isNetworkImage ? _actualWidth : widget.width;
-    final double containerHeight = isNetworkImage ? (_actualHeight + 60) : widget.height;
-    
     return Container(
-      width: containerWidth,
-      height: containerHeight,
+      width: _getContainerWidth(),
+      height: _getContainerHeight(),
       child: Column(
         children: [
           if (widget.config.toolbarAtTop) _buildToolbar(),
-          Expanded(child: _buildCanvas()),
+          Container(
+            width: _getContainerWidth(),
+            height: _getCanvasHeight(),
+            child: _buildCanvas(),
+          ),
           if (!widget.config.toolbarAtTop) _buildToolbar(),
         ],
       ),
@@ -303,7 +338,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             // Check if we should start dragging text (detect actual movement here)
             if (_draggingTextIndex != null && !_isDraggingText && _dragStartPosition != null) {
               final dragDistance = (_dragStartPosition! - offset).distance;
-              if (dragDistance > 5.0) { // Threshold to differentiate tap from drag
+              if (dragDistance > _dragThreshold) { // Threshold to differentiate tap from drag
                 _isDraggingText = true;
                 setState(() {
                   _repositionPreviewPosition = offset;
@@ -371,16 +406,16 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             _controller.resetStartAndEnd();
           },
           child: Container(
-            width: _actualWidth,
-            height: _actualHeight,
+            width: _getCanvasWidth(),
+            height: _getCanvasHeight(),
             color: Colors.white,
             child: Stack(
               children: [
                 CustomPaint(
-                  size: Size(_actualWidth, _actualHeight),
+                  size: Size(_getCanvasWidth(), _getCanvasHeight()),
                   painter: EnhancedImageCustomPainter(
                     controller: _controller,
-                    size: Size(_actualWidth, _actualHeight),
+                    size: Size(_getCanvasWidth(), _getCanvasHeight()),
                   ),
                 ),
                 // Show text dragging preview
@@ -394,7 +429,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                         _getTextBeingDragged(),
                         style: TextStyle(
                           color: _controller.paintHistory[_draggingTextIndex!].color,
-                          fontSize: _controller.paintHistory[_draggingTextIndex!].strokeWidth * 4,
+                          fontSize: _getTextFontSize(_controller.paintHistory[_draggingTextIndex!].strokeWidth),
                           decoration: TextDecoration.none,
                         ),
                       ),
@@ -410,7 +445,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   Widget _buildToolbar() {
     return Container(
-      height: 60,
+      height: _toolbarHeight,
       padding: const EdgeInsets.all(4),
       color: widget.config.toolbarBackgroundColor ?? Colors.grey[800], // Darker background
       child: AnimatedBuilder(
@@ -611,8 +646,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     
     final now = DateTime.now();
     
-    // Check for double-click (within 300ms of previous click)
-    if (_lastClickTime != null && now.difference(_lastClickTime!).inMilliseconds < 300) {
+    // Check for double-click (within timeout period)
+    if (_lastClickTime != null && now.difference(_lastClickTime!).inMilliseconds < _doubleClickTimeoutMs) {
       final textIndex = _findTextAtPosition(_lastTapPosition!);
       if (textIndex != null) {
         _editTextAtIndex(textIndex);
@@ -879,7 +914,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       final info = _controller.paintHistory[i];
       if (info.mode == PaintMode.text && info.text != null && info.offsets.isNotEmpty) {
         final textPosition = info.offsets[0]!;
-        final textBounds = _calculateTextBounds(info.text!, textPosition, info.strokeWidth * 4);
+        final textBounds = _calculateTextBounds(info.text!, textPosition, _getTextFontSize(info.strokeWidth));
         
         if (textBounds.contains(position)) {
           return i;
@@ -902,7 +937,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     textPainter.layout();
     
     // Add some padding to make selection easier
-    const padding = 8.0;
+    const padding = _textBoundsPadding;
     
     final bounds = Rect.fromLTWH(
       position.dx - padding,
