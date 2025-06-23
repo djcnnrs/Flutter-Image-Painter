@@ -12,6 +12,11 @@ import 'package:flutter/material.dart';
 // Begin custom widget code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
+// Enhanced Image Painter with improved UX
+// - Drawing is now properly constrained to canvas area only
+// - No more drawing artifacts over toolbar when toolbarAtTop = true
+// - ClipRect ensures all drawing stays within bounds
+
 import 'package:enhanced_image_painter/enhanced_image_painter.dart';
 
 class SimpleImagePainter extends StatefulWidget {

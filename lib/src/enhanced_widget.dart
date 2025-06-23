@@ -225,6 +225,26 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return strokeWidth * _textSizeMultiplier;
   }
 
+  /// Helper method to check if a position is within the canvas bounds
+  bool _isPositionInCanvasBounds(Offset position) {
+    final canvasWidth = _getCanvasWidth();
+    final canvasHeight = _getCanvasHeight();
+    return position.dx >= 0 && 
+           position.dx <= canvasWidth && 
+           position.dy >= 0 && 
+           position.dy <= canvasHeight;
+  }
+
+  /// Helper method to clamp a position to canvas bounds
+  Offset _clampPositionToCanvasBounds(Offset position) {
+    final canvasWidth = _getCanvasWidth();
+    final canvasHeight = _getCanvasHeight();
+    return Offset(
+      position.dx.clamp(0.0, canvasWidth),
+      position.dy.clamp(0.0, canvasHeight),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -251,6 +271,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         return GestureDetector(
           onTapDown: (details) {
             final offset = details.localPosition;
+            
+            // Check if the tap is within canvas bounds
+            if (!_isPositionInCanvasBounds(offset)) {
+              return;
+            }
             
             // Always check for text first (in any mode)
             final textIndex = _findTextAtPosition(offset);
@@ -305,6 +330,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onPanStart: (details) {
             final offset = details.localPosition;
             
+            // Check if the pan start is within canvas bounds
+            if (!_isPositionInCanvasBounds(offset)) {
+              return;
+            }
+            
             // If we have a potential text drag, just mark that we're starting a pan
             if (_draggingTextIndex != null && _dragStartPosition != null) {
               // Don't set _isDraggingText yet - wait for onPanUpdate to detect actual movement
@@ -335,13 +365,16 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           onPanUpdate: (details) {
             final offset = details.localPosition;
             
+            // Always clamp the position to canvas bounds to prevent drawing outside
+            final clampedOffset = _clampPositionToCanvasBounds(offset);
+            
             // Check if we should start dragging text (detect actual movement here)
             if (_draggingTextIndex != null && !_isDraggingText && _dragStartPosition != null) {
-              final dragDistance = (_dragStartPosition! - offset).distance;
+              final dragDistance = (_dragStartPosition! - clampedOffset).distance;
               if (dragDistance > _dragThreshold) { // Threshold to differentiate tap from drag
                 _isDraggingText = true;
                 setState(() {
-                  _repositionPreviewPosition = offset;
+                  _repositionPreviewPosition = clampedOffset;
                 });
                 return;
               }
@@ -350,7 +383,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             // Handle ongoing text dragging
             if (_isDraggingText && _draggingTextIndex != null) {
               setState(() {
-                _repositionPreviewPosition = offset;
+                _repositionPreviewPosition = clampedOffset;
               });
               return;
             }
@@ -368,17 +401,19 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             // Ensure we're still in progress
             _controller.setInProgress(true);
             
-            // Always update the end position for real-time preview
-            _controller.setEnd(offset);
+            // Always update the end position for real-time preview (using clamped position)
+            _controller.setEnd(clampedOffset);
             
             if (_controller.mode == PaintMode.freeStyle) {
-              _controller.addOffsets(offset);
+              _controller.addOffsets(clampedOffset);
             }
           },
           onPanEnd: (details) {
             // Handle text dragging completion
             if (_isDraggingText && _draggingTextIndex != null && _repositionPreviewPosition != null) {
-              _updateTextPosition(_repositionPreviewPosition!);
+              // Clamp the final position to canvas bounds
+              final clampedPosition = _clampPositionToCanvasBounds(_repositionPreviewPosition!);
+              _updateTextPosition(clampedPosition);
               _isDraggingText = false;
               _draggingTextIndex = null;
               _dragStartPosition = null;
@@ -493,7 +528,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                     await widget.config.onSave!();
                   }
                 },
-                tooltip: _controller.paintHistory.isEmpty ? 'Canvas is empty' : 'Save',
+                tooltip: _controller.paintHistory.isEmpty ? 'Canvas is Empty' : 'Save',
               ),
             ],
           );
