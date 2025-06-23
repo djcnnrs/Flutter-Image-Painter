@@ -215,6 +215,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
     debugPrint('Background type: $backgroundType');
     debugPrint('Background image: ${backgroundImage != null ? '${backgroundImage!.width}x${backgroundImage!.height}' : 'null'}');
     debugPrint('Background image URL: $_backgroundImageUrl');
+    debugPrint('Paint history length: ${_paintHistory.length}');
     
     try {
       // Ensure background image is loaded for network images
@@ -231,14 +232,11 @@ class EnhancedImagePainterController extends ChangeNotifier {
       // Set exporting flag
       _isExporting = true;
       
-      // Use the existing custom painter to ensure consistency
-      final painter = EnhancedImageCustomPainter(controller: this, size: size);
-      
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       
-      // Paint everything using the same logic as the display
-      painter.paint(canvas, size);
+      // Manually draw everything for export to ensure it works
+      await _drawForExport(canvas, size);
       
       final picture = recorder.endRecording();
       final img = await picture.toImage(size.width.toInt(), size.height.toInt());
@@ -269,6 +267,232 @@ class EnhancedImagePainterController extends ChangeNotifier {
     } finally {
       // Always clear the exporting flag
       _isExporting = false;
+    }
+  }
+
+  /// Draw everything for export - consolidated method
+  Future<void> _drawForExport(Canvas canvas, Size size) async {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    
+    debugPrint('Drawing for export - canvas size: ${size.width}x${size.height}');
+    
+    // Step 1: Draw background
+    switch (_backgroundType) {
+      case BackgroundType.blankCanvas:
+        canvas.drawRect(rect, Paint()..color = _backgroundColor);
+        debugPrint('Drew blank canvas background');
+        break;
+      case BackgroundType.graphPaper:
+        _drawGraphPaperForExport(canvas, size);
+        debugPrint('Drew graph paper background');
+        break;
+      case BackgroundType.linedNotebook:
+        _drawLinedNotebookForExport(canvas, size);
+        debugPrint('Drew lined notebook background');
+        break;
+      case BackgroundType.networkImage:
+        if (_backgroundImage != null) {
+          debugPrint('Drawing network image for export: ${_backgroundImage!.width}x${_backgroundImage!.height}');
+          
+          // White background first
+          canvas.drawRect(rect, Paint()..color = Colors.white);
+          
+          // Calculate scaling
+          final imageWidth = _backgroundImage!.width.toDouble();
+          final imageHeight = _backgroundImage!.height.toDouble();
+          final scaleX = size.width / imageWidth;
+          final scaleY = size.height / imageHeight;
+          final scale = math.min(scaleX, scaleY);
+          
+          final scaledWidth = imageWidth * scale;
+          final scaledHeight = imageHeight * scale;
+          final offsetX = (size.width - scaledWidth) / 2;
+          final offsetY = (size.height - scaledHeight) / 2;
+          
+          final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
+          final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
+          
+          canvas.drawImageRect(
+            _backgroundImage!,
+            srcRect,
+            destRect,
+            Paint()..isAntiAlias = true..filterQuality = FilterQuality.high,
+          );
+          
+          debugPrint('Network image drawn for export: ${scaledWidth}x${scaledHeight} at (${offsetX}, ${offsetY})');
+        } else {
+          canvas.drawRect(rect, Paint()..color = Colors.white);
+          debugPrint('Network image was null, drew white background');
+        }
+        break;
+      case BackgroundType.none:
+      default:
+        canvas.drawRect(rect, Paint()..color = Colors.white);
+        debugPrint('Drew white background');
+        break;
+    }
+    
+    // Step 2: Draw all paint history
+    debugPrint('Drawing ${_paintHistory.length} paint items');
+    for (int i = 0; i < _paintHistory.length; i++) {
+      final info = _paintHistory[i];
+      debugPrint('Drawing paint item $i: ${info.mode}, color: ${info.color}, strokeWidth: ${info.strokeWidth}');
+      _drawPaintInfoForExport(canvas, info);
+    }
+  }
+
+  void _drawGraphPaperForExport(Canvas canvas, Size size) {
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Colors.white);
+    
+    final paint = Paint()
+      ..color = Colors.grey.shade300
+      ..strokeWidth = 1;
+
+    const gridSize = 20.0;
+    
+    for (double x = 0; x <= size.width; x += gridSize) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    
+    for (double y = 0; y <= size.height; y += gridSize) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  void _drawLinedNotebookForExport(Canvas canvas, Size size) {
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Colors.white);
+    
+    final paint = Paint()
+      ..color = Colors.grey.shade300
+      ..strokeWidth = 1;
+
+    const lineSpacing = 25.0;
+    
+    for (double y = lineSpacing; y <= size.height; y += lineSpacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  void _drawPaintInfoForExport(Canvas canvas, PaintInfo info) {
+    final paint = Paint()
+      ..color = info.color
+      ..strokeWidth = info.strokeWidth
+      ..style = info.fill ? PaintingStyle.fill : PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..blendMode = BlendMode.srcOver;
+
+    switch (info.mode) {
+      case PaintMode.freeStyle:
+        if (info.offsets.isNotEmpty) {
+          final path = Path();
+          bool hasMovedTo = false;
+          for (int i = 0; i < info.offsets.length; i++) {
+            final offset = info.offsets[i];
+            if (offset == null) {
+              hasMovedTo = false;
+            } else {
+              if (!hasMovedTo) {
+                path.moveTo(offset.dx, offset.dy);
+                hasMovedTo = true;
+              } else {
+                path.lineTo(offset.dx, offset.dy);
+              }
+            }
+          }
+          canvas.drawPath(path, paint);
+        }
+        break;
+      case PaintMode.line:
+        if (info.offsets.length >= 2) {
+          canvas.drawLine(info.offsets[0]!, info.offsets[1]!, paint);
+        }
+        break;
+      case PaintMode.rect:
+        if (info.offsets.length >= 2) {
+          final rect = Rect.fromPoints(info.offsets[0]!, info.offsets[1]!);
+          canvas.drawRect(rect, paint);
+        }
+        break;
+      case PaintMode.circle:
+        if (info.offsets.length >= 2) {
+          final center = info.offsets[0]!;
+          final radius = (info.offsets[1]! - center).distance;
+          canvas.drawCircle(center, radius, paint);
+        }
+        break;
+      case PaintMode.text:
+        if (info.text != null && info.offsets.isNotEmpty) {
+          final textPainter = TextPainter(
+            text: TextSpan(
+              text: info.text!,
+              style: TextStyle(
+                color: info.color,
+                fontSize: info.strokeWidth * 4,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          );
+          textPainter.layout();
+          textPainter.paint(canvas, info.offsets[0]!);
+          textPainter.dispose();
+        }
+        break;
+      case PaintMode.arrow:
+        if (info.offsets.length >= 2) {
+          final start = info.offsets[0]!;
+          final end = info.offsets[1]!;
+          canvas.drawLine(start, end, paint);
+          
+          // Draw arrow head
+          const arrowHeadLength = 20.0;
+          const arrowHeadAngle = 0.5;
+          final direction = (end - start);
+          final length = direction.distance;
+          if (length > 0) {
+            final unitVector = direction / length;
+            final angle = math.atan2(unitVector.dy, unitVector.dx);
+            final arrowHead1 = end - Offset(
+              arrowHeadLength * math.cos(angle - arrowHeadAngle),
+              arrowHeadLength * math.sin(angle - arrowHeadAngle),
+            );
+            final arrowHead2 = end - Offset(
+              arrowHeadLength * math.cos(angle + arrowHeadAngle),
+              arrowHeadLength * math.sin(angle + arrowHeadAngle),
+            );
+            canvas.drawLine(end, arrowHead1, paint);
+            canvas.drawLine(end, arrowHead2, paint);
+          }
+        }
+        break;
+      case PaintMode.dashedLine:
+        if (info.offsets.length >= 2) {
+          final start = info.offsets[0]!;
+          final end = info.offsets[1]!;
+          final dashLength = 8.0 + (paint.strokeWidth * 2);
+          final dashGap = 4.0 + (paint.strokeWidth * 1.5);
+          final direction = end - start;
+          final distance = direction.distance;
+          if (distance > 0) {
+            final unitVector = direction / distance;
+            double currentDistance = 0;
+            bool drawDash = true;
+            while (currentDistance < distance) {
+              final segmentLength = drawDash ? dashLength : dashGap;
+              final nextDistance = math.min(currentDistance + segmentLength, distance);
+              if (drawDash) {
+                final segmentStart = start + unitVector * currentDistance;
+                final segmentEnd = start + unitVector * nextDistance;
+                canvas.drawLine(segmentStart, segmentEnd, paint);
+              }
+              currentDistance = nextDistance;
+              drawDash = !drawDash;
+            }
+          }
+        }
+        break;
+      default:
+        break;
     }
   }
 
