@@ -108,6 +108,17 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     }
   }
 
+  /// Get the actual enabled modes (adds Pan/Zoom for network images)
+  List<PaintMode> get _actualEnabledModes {
+    if (_isNetworkImage()) {
+      // Add Pan/Zoom mode for network images if not already present
+      if (!widget.config.enabledModes.contains(PaintMode.none)) {
+        return [PaintMode.none, ...widget.config.enabledModes];
+      }
+    }
+    return widget.config.enabledModes;
+  }
+
   Future<void> _initializeCanvas() async {
     setState(() => _isLoading = true);
 
@@ -592,7 +603,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         // No instructions needed - just switch to text mode
       },
       itemBuilder: (context) {
-        return widget.config.enabledModes.map((mode) {
+        return _actualEnabledModes.map((mode) {
           return PopupMenuItem(
             value: mode,
             child: Row(
