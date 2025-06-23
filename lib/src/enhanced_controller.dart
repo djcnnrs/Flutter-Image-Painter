@@ -213,6 +213,10 @@ class EnhancedImagePainterController extends ChangeNotifier {
     markForRepaint(); // Ensure everything is marked for rendering
     
     try {
+      debugPrint('Exporting image with size: ${size.width}x${size.height}');
+      debugPrint('Background type: $backgroundType');
+      debugPrint('Background image: ${backgroundImage != null ? '${backgroundImage!.width}x${backgroundImage!.height}' : 'null'}');
+      
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       final painter = EnhancedImageCustomPainter(controller: this, size: size);
@@ -243,6 +247,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       
       // Return full size image
       final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+      debugPrint('Export successful, image size: ${byteData?.lengthInBytes} bytes');
       return byteData?.buffer.asUint8List();
     } catch (e) {
       debugPrint('Export error: $e');
@@ -365,6 +370,10 @@ class EnhancedImageCustomPainter extends CustomPainter {
   void _drawBackground(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     
+    if (controller._isExporting) {
+      debugPrint('Drawing background during export - Size: ${size.width}x${size.height}, Type: ${controller.backgroundType}');
+    }
+    
     switch (controller.backgroundType) {
       case BackgroundType.blankCanvas:
         canvas.drawRect(rect, Paint()..color = controller.backgroundColor);
@@ -377,12 +386,22 @@ class EnhancedImageCustomPainter extends CustomPainter {
         break;
       case BackgroundType.networkImage:
         if (controller.backgroundImage != null) {
+          if (controller._isExporting) {
+            debugPrint('Drawing network image: ${controller.backgroundImage!.width}x${controller.backgroundImage!.height} to ${rect.width}x${rect.height}');
+          }
+          // Draw background image to fill the entire canvas size
           canvas.drawImageRect(
             controller.backgroundImage!,
             Rect.fromLTWH(0, 0, controller.backgroundImage!.width.toDouble(), controller.backgroundImage!.height.toDouble()),
             rect,
             Paint(),
           );
+        } else {
+          // Fallback to white background if image failed to load
+          if (controller._isExporting) {
+            debugPrint('Network image is null, using white background');
+          }
+          canvas.drawRect(rect, Paint()..color = Colors.white);
         }
         break;
       case BackgroundType.none:
