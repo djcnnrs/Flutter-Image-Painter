@@ -246,13 +246,53 @@ class EnhancedImagePainterController extends ChangeNotifier {
       print('EXPORT: Drawing with CustomPainter...');
       painter.paint(canvas, size);
       
+      // Add a bright test element to verify the export is working
+      print('EXPORT: Adding verification test element...');
+      final testPaint = Paint()
+        ..color = Colors.lime
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(50, 50), 30, testPaint);
+      
+      // Add test text
+      final testTextPainter = TextPainter(
+        text: const TextSpan(
+          text: 'EXPORT TEST',
+          style: TextStyle(
+            color: Colors.magenta,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      testTextPainter.layout();
+      testTextPainter.paint(canvas, const Offset(10, 100));
+      testTextPainter.dispose();
+      print('EXPORT: Test elements added');
+      
       // Restore the original in-progress state
       _inProgress = originalInProgress;
       _start = originalStart;
       _end = originalEnd;
       
       final picture = recorder.endRecording();      
+      print('EXPORT: Picture recorded, converting to image...');
       final img = await picture.toImage(size.width.toInt(), size.height.toInt());
+      print('EXPORT: Image conversion complete: ${img.width}x${img.height}');
+      
+      // CRITICAL DEBUG: Let's try to save a test image first to verify the pipeline
+      print('EXPORT: Creating test comparison image...');
+      final testRecorder = ui.PictureRecorder();
+      final testCanvas = Canvas(testRecorder);
+      
+      // Simple test pattern
+      testCanvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Colors.red);
+      testCanvas.drawCircle(Offset(100, 100), 50, Paint()..color = Colors.blue);
+      
+      final testPicture = testRecorder.endRecording();
+      final testImg = await testPicture.toImage(size.width.toInt(), size.height.toInt());
+      final testByteData = await testImg.toByteData(format: ui.ImageByteFormat.png);
+      print('EXPORT: Test image size: ${testByteData?.lengthInBytes} bytes');
       
       if (autoCrop && _paintHistory.isNotEmpty) {
         final bounds = _calculateContentBounds();
@@ -426,40 +466,48 @@ class EnhancedImageCustomPainter extends CustomPainter {
           // First, fill the background with white to ensure no transparency
           canvas.drawRect(rect, Paint()..color = Colors.white);
           
-          // Calculate how to fit the image within the canvas while maintaining aspect ratio
-          final imageWidth = controller.backgroundImage!.width.toDouble();
-          final imageHeight = controller.backgroundImage!.height.toDouble();
-          final canvasWidth = rect.width;
-          final canvasHeight = rect.height;
-          
-          // Calculate scaling factor to fit image within canvas
-          final scaleX = canvasWidth / imageWidth;
-          final scaleY = canvasHeight / imageHeight;
-          final scale = math.min(scaleX, scaleY); // Use smaller scale to maintain aspect ratio
-          
-          // Calculate the actual dimensions after scaling
-          final scaledWidth = imageWidth * scale;
-          final scaledHeight = imageHeight * scale;
-          
-          // Center the image within the canvas
-          final offsetX = (canvasWidth - scaledWidth) / 2;
-          final offsetY = (canvasHeight - scaledHeight) / 2;
-          
-          // Draw the image with proper scaling and centering
-          final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
-          final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
-          
-          // Create paint with explicit settings for proper rendering
-          final imagePaint = Paint()
-            ..isAntiAlias = true
-            ..filterQuality = FilterQuality.high;
-          
-          canvas.drawImageRect(
-            controller.backgroundImage!,
-            srcRect,
-            destRect,
-            imagePaint,
-          );
+          try {
+            // Calculate how to fit the image within the canvas while maintaining aspect ratio
+            final imageWidth = controller.backgroundImage!.width.toDouble();
+            final imageHeight = controller.backgroundImage!.height.toDouble();
+            final canvasWidth = rect.width;
+            final canvasHeight = rect.height;
+            
+            // Calculate scaling factor to fit image within canvas
+            final scaleX = canvasWidth / imageWidth;
+            final scaleY = canvasHeight / imageHeight;
+            final scale = math.min(scaleX, scaleY); // Use smaller scale to maintain aspect ratio
+            
+            // Calculate the actual dimensions after scaling
+            final scaledWidth = imageWidth * scale;
+            final scaledHeight = imageHeight * scale;
+            
+            // Center the image within the canvas
+            final offsetX = (canvasWidth - scaledWidth) / 2;
+            final offsetY = (canvasHeight - scaledHeight) / 2;
+            
+            // Draw the image with proper scaling and centering
+            final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
+            final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
+            
+            // Create paint with explicit settings for proper rendering
+            final imagePaint = Paint()
+              ..isAntiAlias = true
+              ..filterQuality = FilterQuality.high;
+            
+            canvas.drawImageRect(
+              controller.backgroundImage!,
+              srcRect,
+              destRect,
+              imagePaint,
+            );
+            print('PAINT: Network image drawn successfully');
+            
+          } catch (e) {
+            print('PAINT: Error drawing network image: $e');
+            // Fallback to colored background
+            canvas.drawRect(rect, Paint()..color = Colors.lightBlue);
+          }
           
         } else {
           print('PAINT: Network image is null, drawing white background');
