@@ -216,6 +216,14 @@ class EnhancedImagePainterController extends ChangeNotifier {
       debugPrint('Exporting image with size: ${size.width}x${size.height}');
       debugPrint('Background type: $backgroundType');
       debugPrint('Background image: ${backgroundImage != null ? '${backgroundImage!.width}x${backgroundImage!.height}' : 'null'}');
+      debugPrint('Background image URL: $_backgroundImageUrl');
+      
+      // If we have a network image URL but no loaded image, try to reload it
+      if (_backgroundType == BackgroundType.networkImage && _backgroundImage == null && _backgroundImageUrl != null) {
+        debugPrint('Background image is null but URL exists, attempting to reload...');
+        await loadBackgroundImage(_backgroundImageUrl!);
+        debugPrint('After reload - Background image: ${backgroundImage != null ? '${backgroundImage!.width}x${backgroundImage!.height}' : 'still null'}');
+      }
       
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
@@ -389,17 +397,47 @@ class EnhancedImageCustomPainter extends CustomPainter {
           if (controller._isExporting) {
             debugPrint('Drawing network image: ${controller.backgroundImage!.width}x${controller.backgroundImage!.height} to ${rect.width}x${rect.height}');
           }
-          // Draw background image to fill the entire canvas size
+          
+          // First, fill the background with white to ensure no transparency
+          canvas.drawRect(rect, Paint()..color = Colors.white);
+          
+          // Calculate how to fit the image within the canvas while maintaining aspect ratio
+          final imageWidth = controller.backgroundImage!.width.toDouble();
+          final imageHeight = controller.backgroundImage!.height.toDouble();
+          final canvasWidth = rect.width;
+          final canvasHeight = rect.height;
+          
+          // Calculate scaling factor to fit image within canvas
+          final scaleX = canvasWidth / imageWidth;
+          final scaleY = canvasHeight / imageHeight;
+          final scale = math.min(scaleX, scaleY); // Use smaller scale to maintain aspect ratio
+          
+          // Calculate the actual dimensions after scaling
+          final scaledWidth = imageWidth * scale;
+          final scaledHeight = imageHeight * scale;
+          
+          // Center the image within the canvas
+          final offsetX = (canvasWidth - scaledWidth) / 2;
+          final offsetY = (canvasHeight - scaledHeight) / 2;
+          
+          // Draw the image with proper scaling and centering
+          final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
+          final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
+          
           canvas.drawImageRect(
             controller.backgroundImage!,
-            Rect.fromLTWH(0, 0, controller.backgroundImage!.width.toDouble(), controller.backgroundImage!.height.toDouble()),
-            rect,
+            srcRect,
+            destRect,
             Paint(),
           );
+          
+          if (controller._isExporting) {
+            debugPrint('Image scaled and centered: ${scaledWidth}x${scaledHeight} at offset (${offsetX}, ${offsetY})');
+          }
         } else {
           // Fallback to white background if image failed to load
           if (controller._isExporting) {
-            debugPrint('Network image is null, using white background');
+            debugPrint('Network image is null during export, using white background');
           }
           canvas.drawRect(rect, Paint()..color = Colors.white);
         }
