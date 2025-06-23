@@ -522,12 +522,25 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
         // Wrap with InteractiveViewer when in pan/zoom mode
         if (_controller.mode == PaintMode.none) {
+          // In pan/zoom mode, skip GestureDetector and use only InteractiveViewer
           return InteractiveViewer(
             transformationController: _transformationController,
             minScale: 0.5,
             maxScale: 4.0,
             constrained: false,
-            child: canvasContent,
+            panEnabled: true,
+            scaleEnabled: true,
+            child: Container(
+              width: widget.width,
+              height: widget.height,
+              child: CustomPaint(
+                painter: EnhancedImageCustomPainter(
+                  controller: _controller,
+                  size: Size(widget.width, widget.height),
+                ),
+                child: Container(),
+              ),
+            ),
           );
         } else {
           return canvasContent;

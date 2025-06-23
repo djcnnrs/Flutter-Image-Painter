@@ -215,13 +215,13 @@ class EnhancedImagePainterController extends ChangeNotifier {
     print('EXPORT: Paint history: ${_paintHistory.length} items');
     
     try {
-      // Ensure background image is loaded for network images
-      if (_backgroundType == BackgroundType.networkImage && 
-          _backgroundImageUrl != null && 
-          _backgroundImage == null) {
-        print('EXPORT: Loading background image...');
+      // For network images, ensure the background image is available
+      if (_backgroundType == BackgroundType.networkImage && _backgroundImage == null && _backgroundImageUrl != null) {
+        print('EXPORT: Background image not loaded, attempting to load...');
         await loadBackgroundImage(_backgroundImageUrl!);
-        print('EXPORT: Background loaded: ${_backgroundImage != null}');
+        // Wait a moment for the image to be fully processed
+        await Future.delayed(const Duration(milliseconds: 100));
+        print('EXPORT: Background loaded after delay: ${_backgroundImage != null}');
       }
       
       // Create the export canvas
@@ -348,7 +348,14 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   Future<void> loadBackgroundImage(String url) async {
+    // Prevent reloading the same image
+    if (_backgroundImageUrl == url && _backgroundImage != null) {
+      print('Background image already loaded for URL: $url');
+      return;
+    }
+    
     try {
+      print('Loading background image: $url');
       final completer = Completer<ui.Image>();
       final img = NetworkImage(url);
       
@@ -361,9 +368,14 @@ class EnhancedImagePainterController extends ChangeNotifier {
         })
       );
       
-      _backgroundImage = await completer.future;
-      print('Background image loaded: ${_backgroundImage!.width}x${_backgroundImage!.height}');
-      notifyListeners();
+      final loadedImage = await completer.future;
+      
+      // Only update if the image actually changed
+      if (_backgroundImage != loadedImage) {
+        _backgroundImage = loadedImage;
+        print('Background image loaded: ${_backgroundImage!.width}x${_backgroundImage!.height}');
+        notifyListeners();
+      }
     } catch (e) {
       print('Failed to load background image: $e');
     }
@@ -378,12 +390,15 @@ class EnhancedImagePainterController extends ChangeNotifier {
     switch (_backgroundType) {
       case BackgroundType.blankCanvas:
         canvas.drawRect(rect, Paint()..color = _backgroundColor);
+        print('EXPORT: Drew blank canvas with color $_backgroundColor');
         break;
       case BackgroundType.graphPaper:
         _drawExportGraphPaper(canvas, size);
+        print('EXPORT: Drew graph paper');
         break;
       case BackgroundType.linedNotebook:
         _drawExportLinedNotebook(canvas, size);
+        print('EXPORT: Drew lined notebook');
         break;
       case BackgroundType.networkImage:
         if (_backgroundImage != null) {
@@ -391,6 +406,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
           
           // First, fill the background with white to ensure no transparency
           canvas.drawRect(rect, Paint()..color = Colors.white);
+          print('EXPORT: Drew white background base');
           
           try {
             // Calculate how to fit the image within the canvas while maintaining aspect ratio
@@ -412,6 +428,8 @@ class EnhancedImagePainterController extends ChangeNotifier {
             final offsetX = (canvasWidth - scaledWidth) / 2;
             final offsetY = (canvasHeight - scaledHeight) / 2;
             
+            print('EXPORT: Image scaling - original: ${imageWidth}x${imageHeight}, scale: $scale, final: ${scaledWidth}x${scaledHeight}, offset: ($offsetX, $offsetY)');
+            
             // Draw the image with proper scaling and centering
             final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
             final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
@@ -422,12 +440,13 @@ class EnhancedImagePainterController extends ChangeNotifier {
               destRect,
               Paint()..isAntiAlias = true..filterQuality = FilterQuality.high,
             );
-            print('EXPORT: Network image drawn successfully');
+            print('EXPORT: Network image drawn successfully to rect: $destRect');
             
           } catch (e) {
             print('EXPORT: Error drawing network image: $e');
             // Fallback to colored background
             canvas.drawRect(rect, Paint()..color = Colors.lightBlue);
+            print('EXPORT: Drew fallback light blue background');
           }
           
         } else {
@@ -438,6 +457,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       case BackgroundType.none:
       default:
         canvas.drawRect(rect, Paint()..color = Colors.white);
+        print('EXPORT: Drew default white background');
         break;
     }
   }
