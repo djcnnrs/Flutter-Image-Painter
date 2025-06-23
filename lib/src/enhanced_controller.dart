@@ -357,7 +357,15 @@ class EnhancedImageCustomPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Always draw background first, before any annotations
     _drawBackground(canvas, size);
+    
+    // Ensure background is fully rendered before drawing annotations
+    if (controller._isExporting && controller.backgroundType == BackgroundType.networkImage) {
+      // Force a save/restore to ensure background layer is committed
+      canvas.save();
+      canvas.restore();
+    }
     
     // Draw all completed strokes
     for (final info in controller.paintHistory) {
@@ -424,11 +432,16 @@ class EnhancedImageCustomPainter extends CustomPainter {
           final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
           final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
           
+          // Create paint with explicit settings for proper rendering
+          final imagePaint = Paint()
+            ..isAntiAlias = true
+            ..filterQuality = FilterQuality.high;
+          
           canvas.drawImageRect(
             controller.backgroundImage!,
             srcRect,
             destRect,
-            Paint(),
+            imagePaint,
           );
           
           if (controller._isExporting) {
@@ -486,7 +499,8 @@ class EnhancedImageCustomPainter extends CustomPainter {
       ..color = info.color
       ..strokeWidth = info.strokeWidth
       ..style = info.fill ? PaintingStyle.fill : PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = StrokeCap.round
+      ..blendMode = BlendMode.srcOver; // Ensure annotations draw over background
 
     switch (info.mode) {
       case PaintMode.freeStyle:
@@ -640,7 +654,8 @@ class EnhancedImageCustomPainter extends CustomPainter {
       ..color = controller.color.withOpacity(0.9)
       ..strokeWidth = controller.strokeWidth // Same stroke width as final
       ..style = controller.fill ? PaintingStyle.fill : PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = StrokeCap.round
+      ..blendMode = BlendMode.srcOver; // Ensure current stroke draws over background
     
     switch (controller.mode) {
       case PaintMode.line:
