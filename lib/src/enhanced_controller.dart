@@ -97,8 +97,10 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   void setBackgroundImage(ui.Image? image) {
-    _backgroundImage = image;
-    notifyListeners();
+    if (_backgroundImage != image) {  // Only update if actually different
+      _backgroundImage = image;
+      notifyListeners();
+    }
   }
 
   void setStart(Offset? offset) {
@@ -209,147 +211,34 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   Future<Uint8List?> exportImage(Size size, {bool autoCrop = false}) async {
-    _isExporting = true;
-    markForRepaint(); // Ensure everything is marked for rendering
+    debugPrint('Exporting image with size: ${size.width}x${size.height}');
+    debugPrint('Background type: $backgroundType');
+    debugPrint('Background image: ${backgroundImage != null ? '${backgroundImage!.width}x${backgroundImage!.height}' : 'null'}');
+    debugPrint('Background image URL: $_backgroundImageUrl');
     
     try {
-      debugPrint('Exporting image with size: ${size.width}x${size.height}');
-      debugPrint('Background type: $backgroundType');
-      debugPrint('Background image: ${backgroundImage != null ? '${backgroundImage!.width}x${backgroundImage!.height}' : 'null'}');
-      debugPrint('Background image URL: $_backgroundImageUrl');
-      
-      // For network images, ensure we have a fresh copy of the image
-      ui.Image? exportBackgroundImage = _backgroundImage;
-      if (_backgroundType == BackgroundType.networkImage && _backgroundImageUrl != null) {
-        debugPrint('Loading fresh background image for export...');
-        try {
-          final completer = Completer<ui.Image>();
-          final img = NetworkImage(_backgroundImageUrl!);
-          img.resolve(const ImageConfiguration()).addListener(
-            ImageStreamListener((info, _) {
-              completer.complete(info.image);
-            }, onError: (error, stackTrace) {
-              debugPrint('Failed to load fresh image: $error');
-              completer.complete(_backgroundImage); // Fallback to existing image
-            })
-          );
-          exportBackgroundImage = await completer.future;
-          debugPrint('Fresh background image loaded: ${exportBackgroundImage != null ? '${exportBackgroundImage!.width}x${exportBackgroundImage!.height}' : 'null'}');
-        } catch (e) {
-          debugPrint('Error loading fresh background image: $e');
-          exportBackgroundImage = _backgroundImage; // Use existing
+      // Ensure background image is loaded for network images
+      if (_backgroundType == BackgroundType.networkImage && 
+          _backgroundImageUrl != null && 
+          _backgroundImage == null) {
+        debugPrint('Loading background image before export...');
+        await loadBackgroundImage(_backgroundImageUrl!);
+        if (_backgroundImage == null) {
+          debugPrint('Warning: Failed to load background image for export');
         }
       }
+      
+      // Set exporting flag
+      _isExporting = true;
+      
+      // Use the existing custom painter to ensure consistency
+      final painter = EnhancedImageCustomPainter(controller: this, size: size);
       
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       
-      // Manually draw everything step by step
-      final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-      
-      // Step 1: Draw background
-      if (_backgroundType == BackgroundType.networkImage && exportBackgroundImage != null) {
-        debugPrint('Manually drawing background image...');
-        // White background first
-        canvas.drawRect(rect, Paint()..color = Colors.white);
-        
-        // Calculate scaling
-        final imageWidth = exportBackgroundImage.width.toDouble();
-        final imageHeight = exportBackgroundImage.height.toDouble();
-        final scaleX = size.width / imageWidth;
-        final scaleY = size.height / imageHeight;
-        final scale = math.min(scaleX, scaleY);
-        
-        final scaledWidth = imageWidth * scale;
-        final scaledHeight = imageHeight * scale;
-        final offsetX = (size.width - scaledWidth) / 2;
-        final offsetY = (size.height - scaledHeight) / 2;
-        
-        final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
-        final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
-        
-        canvas.drawImageRect(
-          exportBackgroundImage,
-          srcRect,
-          destRect,
-          Paint()..isAntiAlias = true..filterQuality = FilterQuality.high,
-        );
-        debugPrint('Manual background drawn: ${scaledWidth}x${scaledHeight} at (${offsetX}, ${offsetY})');
-      } else {
-        // Draw other background types or white background
-        canvas.drawRect(rect, Paint()..color = Colors.white);
-      }
-      
-      // Step 2: Draw all annotations
-      for (final info in _paintHistory) {
-        final paint = Paint()
-          ..color = info.color
-          ..strokeWidth = info.strokeWidth
-          ..style = info.fill ? PaintingStyle.fill : PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round
-          ..blendMode = BlendMode.srcOver;
-
-        switch (info.mode) {
-          case PaintMode.freeStyle:
-            if (info.offsets.isNotEmpty) {
-              final path = Path();
-              bool hasMovedTo = false;
-              for (int i = 0; i < info.offsets.length; i++) {
-                final offset = info.offsets[i];
-                if (offset == null) {
-                  hasMovedTo = false;
-                } else {
-                  if (!hasMovedTo) {
-                    path.moveTo(offset.dx, offset.dy);
-                    hasMovedTo = true;
-                  } else {
-                    path.lineTo(offset.dx, offset.dy);
-                  }
-                }
-              }
-              canvas.drawPath(path, paint);
-            }
-            break;
-          case PaintMode.line:
-            if (info.offsets.length >= 2) {
-              canvas.drawLine(info.offsets[0]!, info.offsets[1]!, paint);
-            }
-            break;
-          case PaintMode.rect:
-            if (info.offsets.length >= 2) {
-              final rect = Rect.fromPoints(info.offsets[0]!, info.offsets[1]!);
-              canvas.drawRect(rect, paint);
-            }
-            break;
-          case PaintMode.circle:
-            if (info.offsets.length >= 2) {
-              final center = info.offsets[0]!;
-              final radius = (info.offsets[1]! - center).distance;
-              canvas.drawCircle(center, radius, paint);
-            }
-            break;
-          case PaintMode.text:
-            if (info.text != null && info.offsets.isNotEmpty) {
-              final textPainter = TextPainter(
-                text: TextSpan(
-                  text: info.text!,
-                  style: TextStyle(
-                    color: info.color,
-                    fontSize: info.strokeWidth * 4,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                textDirection: TextDirection.ltr,
-              );
-              textPainter.layout();
-              textPainter.paint(canvas, info.offsets[0]!);
-              textPainter.dispose();
-            }
-            break;
-          default:
-            break; // Skip other modes for now
-        }
-      }
+      // Paint everything using the same logic as the display
+      painter.paint(canvas, size);
       
       final picture = recorder.endRecording();
       final img = await picture.toImage(size.width.toInt(), size.height.toInt());
@@ -378,6 +267,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       debugPrint('Export error: $e');
       return null;
     } finally {
+      // Always clear the exporting flag
       _isExporting = false;
     }
   }
