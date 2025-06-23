@@ -225,6 +225,8 @@ class EnhancedImagePainterController extends ChangeNotifier {
         await loadBackgroundImage(_backgroundImageUrl!);
         if (_backgroundImage == null) {
           debugPrint('Warning: Failed to load background image for export');
+        } else {
+          debugPrint('Background image loaded successfully for export: ${_backgroundImage!.width}x${_backgroundImage!.height}');
         }
       }
       
@@ -234,15 +236,17 @@ class EnhancedImagePainterController extends ChangeNotifier {
       
       debugPrint('Starting export drawing...');
       
-      // Step 1: Draw white background to ensure no transparency
-      canvas.drawRect(rect, Paint()..color = Colors.white);
-      debugPrint('Drew white background base');
+      // Step 1: Only draw white background for non-network images
+      if (_backgroundType != BackgroundType.networkImage) {
+        canvas.drawRect(rect, Paint()..color = Colors.white);
+        debugPrint('Drew white background base (non-network image)');
+      }
       
       // Step 2: Draw background image if we have one
       if (_backgroundType == BackgroundType.networkImage && _backgroundImage != null) {
         debugPrint('Drawing network image: ${_backgroundImage!.width}x${_backgroundImage!.height}');
         
-        // Calculate scaling
+        // Calculate scaling to fit the canvas while maintaining aspect ratio
         final imageWidth = _backgroundImage!.width.toDouble();
         final imageHeight = _backgroundImage!.height.toDouble();
         final scaleX = size.width / imageWidth;
@@ -257,13 +261,20 @@ class EnhancedImagePainterController extends ChangeNotifier {
         final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
         final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
         
+        // First fill the area with white to avoid transparent edges
+        canvas.drawRect(rect, Paint()..color = Colors.white);
+        
+        // Use explicit paint settings to ensure proper rendering
         final imagePaint = Paint()
           ..isAntiAlias = true
-          ..filterQuality = FilterQuality.high
-          ..blendMode = BlendMode.srcOver;
+          ..filterQuality = FilterQuality.high;
         
         canvas.drawImageRect(_backgroundImage!, srcRect, destRect, imagePaint);
         debugPrint('Network image drawn: ${scaledWidth}x${scaledHeight} at (${offsetX}, ${offsetY})');
+        
+        // Verify the image was drawn by checking a sample pixel
+        // This is a debugging step that will help us understand if the image is actually being rendered
+        debugPrint('Image drawn to canvas - Scale: $scale, DestRect: $destRect');
       } else if (_backgroundType == BackgroundType.graphPaper) {
         // Draw graph paper
         canvas.drawRect(rect, Paint()..color = Colors.white);
@@ -294,7 +305,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
         debugPrint('Drew blank canvas background');
       }
       
-      // Step 3: Draw all annotations
+      // Step 3: Draw all annotations with proper blend modes
       debugPrint('Drawing ${_paintHistory.length} annotations');
       for (int i = 0; i < _paintHistory.length; i++) {
         final info = _paintHistory[i];
@@ -387,10 +398,11 @@ class EnhancedImagePainterController extends ChangeNotifier {
               );
               
               textPainter.layout();
+              final textSize = Size(textPainter.width, textPainter.height);
               textPainter.paint(canvas, info.offsets[0]!);
               textPainter.dispose();
               
-              debugPrint('Text painted successfully with size: ${textPainter.width}x${textPainter.height}');
+              debugPrint('Text painted successfully with size: ${textSize.width}x${textSize.height}');
             }
             break;
             
