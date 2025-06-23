@@ -230,19 +230,20 @@ class EnhancedImagePainterController extends ChangeNotifier {
         }
       }
       
-      // Try using the same approach as the CustomPainter
+      // Create a CustomPainter instance and use it to draw
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       
       debugPrint('Starting export drawing using CustomPainter approach...');
       
-      // Use the same background drawing logic as the CustomPainter
-      _drawBackground(canvas, size);
+      // Create a temporary CustomPainter to do the drawing
+      final painter = EnhancedImageCustomPainter(
+        controller: this,
+        size: size,
+      );
       
-      // Draw all paint history items using the same logic as CustomPainter
-      for (final info in _paintHistory) {
-        _drawPaintInfo(canvas, info);
-      }
+      // Use the CustomPainter's paint method to draw everything
+      painter.paint(canvas, size);
       
       debugPrint('Finished drawing all elements using CustomPainter methods');
       
