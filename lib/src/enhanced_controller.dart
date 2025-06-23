@@ -210,66 +210,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   Future<Uint8List?> exportImage(Size size, {bool autoCrop = false}) async {
-    print('EXPORT: Starting minimal export test ${size.width}x${size.height}');
-    
-    try {
-      // SIMPLIFIED TEST: Just create a basic colored rectangle to test export pipeline
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      
-      // Draw a simple test pattern that should be clearly visible
-      canvas.drawRect(
-        Rect.fromLTWH(0, 0, size.width, size.height), 
-        Paint()..color = Colors.red
-      );
-      
-      canvas.drawCircle(
-        Offset(size.width / 2, size.height / 2), 
-        50, 
-        Paint()..color = Colors.blue
-      );
-      
-      // Add test text
-      final testTextPainter = TextPainter(
-        text: const TextSpan(
-          text: 'MINIMAL TEST',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      );
-      testTextPainter.layout();
-      testTextPainter.paint(canvas, Offset(20, 20));
-      testTextPainter.dispose();
-      
-      final picture = recorder.endRecording();      
-      print('EXPORT: Converting to image...');
-      final img = await picture.toImage(size.width.toInt(), size.height.toInt());
-      print('EXPORT: Image created: ${img.width}x${img.height}');
-      
-      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-      
-      if (byteData != null) {
-        final bytes = byteData.buffer.asUint8List();
-        print('EXPORT: MINIMAL TEST SUCCESS - ${bytes.length} bytes');
-        return bytes;
-      } else {
-        print('EXPORT: ERROR - ByteData is null');
-        return null;
-      }
-      
-    } catch (e, stackTrace) {
-      print('EXPORT: ERROR - $e');
-      return null;
-    }
-  }
-
-  /// Full export with background image and annotations (backup method)
-  Future<Uint8List?> exportImageFull(Size size, {bool autoCrop = false}) async {
-    print('EXPORT: Starting full export ${size.width}x${size.height}');
+    print('EXPORT: Starting export ${size.width}x${size.height}');
     print('EXPORT: Background type: $backgroundType, Image: ${backgroundImage != null}');
     print('EXPORT: Paint history: ${_paintHistory.length} items');
     
@@ -283,7 +224,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
         print('EXPORT: Background loaded: ${_backgroundImage != null}');
       }
       
-      // Create a CustomPainter instance and use it to draw
+      // Create the export canvas
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       
@@ -295,15 +236,14 @@ class EnhancedImagePainterController extends ChangeNotifier {
       _start = null;
       _end = null;
       
-      // Create a temporary CustomPainter to do the drawing
-      final painter = EnhancedImageCustomPainter(
-        controller: this,
-        size: size,
-      );
+      // Draw background directly instead of using CustomPainter
+      _drawExportBackground(canvas, size);
       
-      // Use the CustomPainter's paint method to draw everything
-      print('EXPORT: Drawing with CustomPainter...');
-      painter.paint(canvas, size);
+      // Draw all completed annotations/strokes
+      print('EXPORT: Drawing ${_paintHistory.length} annotations');
+      for (final info in _paintHistory) {
+        _drawExportPaintInfo(canvas, info);
+      }
       
       // Restore the original in-progress state
       _inProgress = originalInProgress;
@@ -311,9 +251,9 @@ class EnhancedImagePainterController extends ChangeNotifier {
       _end = originalEnd;
       
       final picture = recorder.endRecording();      
-      print('EXPORT: Picture recorded, converting to image...');
+      print('EXPORT: Converting to image...');
       final img = await picture.toImage(size.width.toInt(), size.height.toInt());
-      print('EXPORT: Image conversion complete: ${img.width}x${img.height}');
+      print('EXPORT: Image created: ${img.width}x${img.height}');
       
       if (autoCrop && _paintHistory.isNotEmpty) {
         final bounds = _calculateContentBounds();
@@ -337,7 +277,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       
       if (byteData != null) {
         final bytes = byteData.buffer.asUint8List();
-        print('EXPORT: Full export success - ${bytes.length} bytes');
+        print('EXPORT: Success - ${bytes.length} bytes');
         return bytes;
       } else {
         print('EXPORT: ERROR - ByteData is null');
@@ -432,14 +372,6 @@ class EnhancedImagePainterController extends ChangeNotifier {
   @override
   void dispose() {
     super.dispose();
-  }
-
-  /// Toggle between minimal and full export for testing
-  /// Call this method to switch back to full export functionality
-  static void useFullExport() {
-    // This is a placeholder method - to use full export, 
-    // replace the exportImage method body with the exportImageFull method body
-    print('To use full export: Replace exportImage method with exportImageFull method content');
   }
 }
 
@@ -791,5 +723,266 @@ class EnhancedImageCustomPainter extends CustomPainter {
            oldDelegate.controller.start != controller.start ||
            oldDelegate.controller.end != controller.end ||
            oldDelegate.controller.offsets.length != controller.offsets.length;
+  }
+}
+
+/// Draw background for export (simplified version of CustomPainter logic)
+void _drawExportBackground(Canvas canvas, Size size) {
+  final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+  
+  print('EXPORT: Drawing background ${_backgroundType}');
+  
+  switch (_backgroundType) {
+    case BackgroundType.blankCanvas:
+      canvas.drawRect(rect, Paint()..color = _backgroundColor);
+      break;
+    case BackgroundType.graphPaper:
+      _drawExportGraphPaper(canvas, size);
+      break;
+    case BackgroundType.linedNotebook:
+      _drawExportLinedNotebook(canvas, size);
+      break;
+    case BackgroundType.networkImage:
+      if (_backgroundImage != null) {
+        print('EXPORT: Drawing network image ${_backgroundImage!.width}x${_backgroundImage!.height}');
+        
+        // First, fill the background with white to ensure no transparency
+        canvas.drawRect(rect, Paint()..color = Colors.white);
+        
+        try {
+          // Calculate how to fit the image within the canvas while maintaining aspect ratio
+          final imageWidth = _backgroundImage!.width.toDouble();
+          final imageHeight = _backgroundImage!.height.toDouble();
+          final canvasWidth = rect.width;
+          final canvasHeight = rect.height;
+          
+          // Calculate scaling factor to fit image within canvas
+          final scaleX = canvasWidth / imageWidth;
+          final scaleY = canvasHeight / imageHeight;
+          final scale = math.min(scaleX, scaleY); // Use smaller scale to maintain aspect ratio
+          
+          // Calculate the actual dimensions after scaling
+          final scaledWidth = imageWidth * scale;
+          final scaledHeight = imageHeight * scale;
+          
+          // Center the image within the canvas
+          final offsetX = (canvasWidth - scaledWidth) / 2;
+          final offsetY = (canvasHeight - scaledHeight) / 2;
+          
+          // Draw the image with proper scaling and centering
+          final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
+          final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
+          
+          canvas.drawImageRect(
+            _backgroundImage!,
+            srcRect,
+            destRect,
+            Paint()..isAntiAlias = true..filterQuality = FilterQuality.high,
+          );
+          print('EXPORT: Network image drawn successfully');
+          
+        } catch (e) {
+          print('EXPORT: Error drawing network image: $e');
+          // Fallback to colored background
+          canvas.drawRect(rect, Paint()..color = Colors.lightBlue);
+        }
+        
+      } else {
+        print('EXPORT: Network image is null, drawing white background');
+        canvas.drawRect(rect, Paint()..color = Colors.white);
+      }
+      break;
+    case BackgroundType.none:
+    default:
+      canvas.drawRect(rect, Paint()..color = Colors.white);
+      break;
+  }
+}
+
+void _drawExportGraphPaper(Canvas canvas, Size size) {
+  canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Colors.white);
+  
+  final paint = Paint()
+    ..color = Colors.grey.shade300
+    ..strokeWidth = 1;
+
+  const gridSize = 20.0;
+  
+  for (double x = 0; x <= size.width; x += gridSize) {
+    canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+  }
+  
+  for (double y = 0; y <= size.height; y += gridSize) {
+    canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+  }
+}
+
+void _drawExportLinedNotebook(Canvas canvas, Size size) {
+  canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Colors.white);
+  
+  final paint = Paint()
+    ..color = Colors.grey.shade300
+    ..strokeWidth = 1;
+
+  const lineSpacing = 25.0;
+  
+  for (double y = lineSpacing; y <= size.height; y += lineSpacing) {
+    canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+  }
+}
+
+void _drawExportPaintInfo(Canvas canvas, PaintInfo info) {
+  final paint = Paint()
+    ..color = info.color
+    ..strokeWidth = info.strokeWidth
+    ..style = info.fill ? PaintingStyle.fill : PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..blendMode = BlendMode.srcOver;
+
+  switch (info.mode) {
+    case PaintMode.freeStyle:
+      _drawExportFreeStyle(canvas, info.offsets, paint);
+      break;
+    case PaintMode.line:
+      if (info.offsets.length >= 2) {
+        canvas.drawLine(info.offsets[0]!, info.offsets[1]!, paint);
+      }
+      break;
+    case PaintMode.rect:
+      if (info.offsets.length >= 2) {
+        final rect = Rect.fromPoints(info.offsets[0]!, info.offsets[1]!);
+        canvas.drawRect(rect, paint);
+      }
+      break;
+    case PaintMode.circle:
+      if (info.offsets.length >= 2) {
+        final center = info.offsets[0]!;
+        final radius = (info.offsets[1]! - center).distance;
+        canvas.drawCircle(center, radius, paint);
+      }
+      break;
+    case PaintMode.text:
+      if (info.text != null && info.offsets.isNotEmpty) {
+        print('EXPORT: Drawing text "${info.text}" at ${info.offsets[0]}');
+        _drawExportText(canvas, info.text!, info.offsets[0]!, info.color, info.strokeWidth);
+      }
+      break;
+    case PaintMode.arrow:
+      if (info.offsets.length >= 2) {
+        _drawExportArrow(canvas, info.offsets[0]!, info.offsets[1]!, paint);
+      }
+      break;
+    case PaintMode.dashedLine:
+      if (info.offsets.length >= 2) {
+        _drawExportDashedLine(canvas, info.offsets[0]!, info.offsets[1]!, paint);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+void _drawExportFreeStyle(Canvas canvas, List<Offset?> offsets, Paint paint) {
+  if (offsets.isEmpty) return;
+  
+  final path = Path();
+  bool hasMovedTo = false;
+  
+  for (int i = 0; i < offsets.length; i++) {
+    final offset = offsets[i];
+    if (offset == null) {
+      hasMovedTo = false;
+    } else {
+      if (!hasMovedTo) {
+        path.moveTo(offset.dx, offset.dy);
+        hasMovedTo = true;
+      } else {
+        // Use quadratic bezier curves for smoother lines
+        if (i > 0 && offsets[i - 1] != null) {
+          final prevOffset = offsets[i - 1]!;
+          final midPoint = Offset(
+            (prevOffset.dx + offset.dx) / 2,
+            (prevOffset.dy + offset.dy) / 2,
+          );
+          path.quadraticBezierTo(prevOffset.dx, prevOffset.dy, midPoint.dx, midPoint.dy);
+        } else {
+          path.lineTo(offset.dx, offset.dy);
+        }
+      }
+    }
+  }
+  
+  canvas.drawPath(path, paint);
+}
+
+void _drawExportText(Canvas canvas, String text, Offset offset, Color color, double fontSize) {
+  final textPainter = TextPainter(
+    text: TextSpan(
+      text: text,
+      style: TextStyle(
+        color: color,
+        fontSize: fontSize * 4,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  );
+  textPainter.layout();
+  textPainter.paint(canvas, offset);
+  textPainter.dispose();
+}
+
+void _drawExportArrow(Canvas canvas, Offset start, Offset end, Paint paint) {
+  canvas.drawLine(start, end, paint);
+  
+  const arrowHeadLength = 20.0;
+  const arrowHeadAngle = 0.5;
+  
+  final direction = (end - start);
+  final length = direction.distance;
+  if (length <= 0) return;
+  
+  final unitVector = direction / length;
+  final angle = math.atan2(unitVector.dy, unitVector.dx);
+  
+  final arrowHead1 = end - Offset(
+    arrowHeadLength * math.cos(angle - arrowHeadAngle),
+    arrowHeadLength * math.sin(angle - arrowHeadAngle),
+  );
+  final arrowHead2 = end - Offset(
+    arrowHeadLength * math.cos(angle + arrowHeadAngle),
+    arrowHeadLength * math.sin(angle + arrowHeadAngle),
+  );
+  
+  canvas.drawLine(end, arrowHead1, paint);
+  canvas.drawLine(end, arrowHead2, paint);
+}
+
+void _drawExportDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
+  // Scale dash length and gap based on stroke width
+  final dashLength = 8.0 + (paint.strokeWidth * 2);
+  final dashGap = 4.0 + (paint.strokeWidth * 1.5);
+  
+  final direction = end - start;
+  final distance = direction.distance;
+  if (distance <= 0) return;
+  
+  final unitVector = direction / distance;
+  
+  double currentDistance = 0;
+  bool drawDash = true;
+  
+  while (currentDistance < distance) {
+    final segmentLength = drawDash ? dashLength : dashGap;
+    final nextDistance = math.min(currentDistance + segmentLength, distance);
+    
+    if (drawDash) {
+      final segmentStart = start + unitVector * currentDistance;
+      final segmentEnd = start + unitVector * nextDistance;
+      canvas.drawLine(segmentStart, segmentEnd, paint);
+    }
+    
+    currentDistance = nextDistance;
+    drawDash = !drawDash;
   }
 }
