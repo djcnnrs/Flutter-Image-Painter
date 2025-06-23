@@ -82,6 +82,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   Offset? _dragStartPosition;
   Offset? _repositionPreviewPosition; // Used for drag preview
 
+  // Pan/Zoom functionality
+  TransformationController _transformationController = TransformationController();
+  double _currentScale = 1.0;
+  Offset _currentPanOffset = Offset.zero;
+
   @override
   void initState() {
     super.initState();
@@ -141,8 +146,20 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         _controller.setBackgroundImageUrl(bgImage);
         
         if (_controller.backgroundImage != null) {
-          _actualWidth = _controller.backgroundImage!.width.toDouble();
-          _actualHeight = _controller.backgroundImage!.height.toDouble();
+          // Calculate scaled dimensions to fit within provided canvas size
+          final imageWidth = _controller.backgroundImage!.width.toDouble();
+          final imageHeight = _controller.backgroundImage!.height.toDouble();
+          final availableWidth = widget.width;
+          final availableHeight = widget.height - _toolbarHeight;
+          
+          // Calculate scaling factor to fit image within available space
+          final scaleX = availableWidth / imageWidth;
+          final scaleY = availableHeight / imageHeight;
+          final scale = math.min(scaleX, scaleY); // Use smaller scale to maintain aspect ratio
+          
+          // Set scaled dimensions
+          _actualWidth = imageWidth * scale;
+          _actualHeight = imageHeight * scale;
         } else {
           _actualWidth = widget.width;
           _actualHeight = widget.height;
@@ -189,6 +206,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   void dispose() {
     _controller.dispose();
     _textController.dispose();
+    _transformationController.dispose();
     super.dispose();
   }
 
@@ -268,12 +286,17 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        return GestureDetector(
+        final canvasContent = GestureDetector(
           onTapDown: (details) {
             final offset = details.localPosition;
             
             // Check if the tap is within canvas bounds
             if (!_isPositionInCanvasBounds(offset)) {
+              return;
+            }
+            
+            // Skip all drawing gestures in pan/zoom mode
+            if (_controller.mode == PaintMode.none) {
               return;
             }
             
@@ -335,6 +358,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               return;
             }
             
+            // Skip all drawing gestures in pan/zoom mode
+            if (_controller.mode == PaintMode.none) {
+              return;
+            }
+            
             // If we have a potential text drag, just mark that we're starting a pan
             if (_draggingTextIndex != null && _dragStartPosition != null) {
               // Don't set _isDraggingText yet - wait for onPanUpdate to detect actual movement
@@ -367,6 +395,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             
             // Always clamp the position to canvas bounds to prevent drawing outside
             final clampedOffset = _clampPositionToCanvasBounds(offset);
+            
+            // Skip all drawing gestures in pan/zoom mode
+            if (_controller.mode == PaintMode.none) {
+              return;
+            }
             
             // Check if we should start dragging text (detect actual movement here)
             if (_draggingTextIndex != null && !_isDraggingText && _dragStartPosition != null) {
@@ -474,6 +507,19 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             ),
           ),
         );
+
+        // Wrap with InteractiveViewer when in pan/zoom mode
+        if (_controller.mode == PaintMode.none) {
+          return InteractiveViewer(
+            transformationController: _transformationController,
+            minScale: 0.5,
+            maxScale: 4.0,
+            constrained: false,
+            child: canvasContent,
+          );
+        } else {
+          return canvasContent;
+        }
       },
     );
   }
