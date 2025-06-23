@@ -210,7 +210,66 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   Future<Uint8List?> exportImage(Size size, {bool autoCrop = false}) async {
-    print('EXPORT: Starting export ${size.width}x${size.height}');
+    print('EXPORT: Starting minimal export test ${size.width}x${size.height}');
+    
+    try {
+      // SIMPLIFIED TEST: Just create a basic colored rectangle to test export pipeline
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      
+      // Draw a simple test pattern that should be clearly visible
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.width, size.height), 
+        Paint()..color = Colors.red
+      );
+      
+      canvas.drawCircle(
+        Offset(size.width / 2, size.height / 2), 
+        50, 
+        Paint()..color = Colors.blue
+      );
+      
+      // Add test text
+      final testTextPainter = TextPainter(
+        text: const TextSpan(
+          text: 'MINIMAL TEST',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      testTextPainter.layout();
+      testTextPainter.paint(canvas, Offset(20, 20));
+      testTextPainter.dispose();
+      
+      final picture = recorder.endRecording();      
+      print('EXPORT: Converting to image...');
+      final img = await picture.toImage(size.width.toInt(), size.height.toInt());
+      print('EXPORT: Image created: ${img.width}x${img.height}');
+      
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+      
+      if (byteData != null) {
+        final bytes = byteData.buffer.asUint8List();
+        print('EXPORT: MINIMAL TEST SUCCESS - ${bytes.length} bytes');
+        return bytes;
+      } else {
+        print('EXPORT: ERROR - ByteData is null');
+        return null;
+      }
+      
+    } catch (e, stackTrace) {
+      print('EXPORT: ERROR - $e');
+      return null;
+    }
+  }
+
+  /// Full export with background image and annotations (backup method)
+  Future<Uint8List?> exportImageFull(Size size, {bool autoCrop = false}) async {
+    print('EXPORT: Starting full export ${size.width}x${size.height}');
     print('EXPORT: Background type: $backgroundType, Image: ${backgroundImage != null}');
     print('EXPORT: Paint history: ${_paintHistory.length} items');
     
@@ -246,30 +305,6 @@ class EnhancedImagePainterController extends ChangeNotifier {
       print('EXPORT: Drawing with CustomPainter...');
       painter.paint(canvas, size);
       
-      // Add a bright test element to verify the export is working
-      print('EXPORT: Adding verification test element...');
-      final testPaint = Paint()
-        ..color = Colors.lime
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(50, 50), 30, testPaint);
-      
-      // Add test text
-      final testTextPainter = TextPainter(
-        text: const TextSpan(
-          text: 'EXPORT TEST',
-          style: TextStyle(
-            color: Colors.magenta,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      );
-      testTextPainter.layout();
-      testTextPainter.paint(canvas, const Offset(10, 100));
-      testTextPainter.dispose();
-      print('EXPORT: Test elements added');
-      
       // Restore the original in-progress state
       _inProgress = originalInProgress;
       _start = originalStart;
@@ -279,20 +314,6 @@ class EnhancedImagePainterController extends ChangeNotifier {
       print('EXPORT: Picture recorded, converting to image...');
       final img = await picture.toImage(size.width.toInt(), size.height.toInt());
       print('EXPORT: Image conversion complete: ${img.width}x${img.height}');
-      
-      // CRITICAL DEBUG: Let's try to save a test image first to verify the pipeline
-      print('EXPORT: Creating test comparison image...');
-      final testRecorder = ui.PictureRecorder();
-      final testCanvas = Canvas(testRecorder);
-      
-      // Simple test pattern
-      testCanvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Colors.red);
-      testCanvas.drawCircle(Offset(100, 100), 50, Paint()..color = Colors.blue);
-      
-      final testPicture = testRecorder.endRecording();
-      final testImg = await testPicture.toImage(size.width.toInt(), size.height.toInt());
-      final testByteData = await testImg.toByteData(format: ui.ImageByteFormat.png);
-      print('EXPORT: Test image size: ${testByteData?.lengthInBytes} bytes');
       
       if (autoCrop && _paintHistory.isNotEmpty) {
         final bounds = _calculateContentBounds();
@@ -307,7 +328,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
           
           final croppedImg = await _cropImage(img, cropRect);
           final byteData = await croppedImg.toByteData(format: ui.ImageByteFormat.png);
-          debugPrint('Cropped export completed, final image size: ${byteData?.lengthInBytes} bytes');
+          print('EXPORT: Cropped export completed, final image size: ${byteData?.lengthInBytes} bytes');
           return byteData?.buffer.asUint8List();
         }
       }
@@ -316,7 +337,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       
       if (byteData != null) {
         final bytes = byteData.buffer.asUint8List();
-        print('EXPORT: Success - ${bytes.length} bytes');
+        print('EXPORT: Full export success - ${bytes.length} bytes');
         return bytes;
       } else {
         print('EXPORT: ERROR - ByteData is null');
@@ -325,6 +346,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       
     } catch (e, stackTrace) {
       print('EXPORT: ERROR - $e');
+      print('EXPORT: Stack trace: $stackTrace');
       return null;
     }
   }
@@ -410,6 +432,14 @@ class EnhancedImagePainterController extends ChangeNotifier {
   @override
   void dispose() {
     super.dispose();
+  }
+
+  /// Toggle between minimal and full export for testing
+  /// Call this method to switch back to full export functionality
+  static void useFullExport() {
+    // This is a placeholder method - to use full export, 
+    // replace the exportImage method body with the exportImageFull method body
+    print('To use full export: Replace exportImage method with exportImageFull method content');
   }
 }
 
