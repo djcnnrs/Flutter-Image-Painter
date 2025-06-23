@@ -230,268 +230,28 @@ class EnhancedImagePainterController extends ChangeNotifier {
         }
       }
       
+      // Try using the same approach as the CustomPainter
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      final rect = Rect.fromLTWH(0, 0, size.width, size.height);
       
-      debugPrint('Starting export drawing...');
+      debugPrint('Starting export drawing using CustomPainter approach...');
       
-      // Step 1: Only draw white background for non-network images
-      if (_backgroundType != BackgroundType.networkImage) {
-        canvas.drawRect(rect, Paint()..color = Colors.white);
-        debugPrint('Drew white background base (non-network image)');
+      // Use the same background drawing logic as the CustomPainter
+      _drawBackground(canvas, size);
+      
+      // Draw all paint history items using the same logic as CustomPainter
+      for (final info in _paintHistory) {
+        _drawPaintInfo(canvas, info);
       }
       
-      // Step 2: Draw background image if we have one
-      if (_backgroundType == BackgroundType.networkImage && _backgroundImage != null) {
-        debugPrint('Drawing network image: ${_backgroundImage!.width}x${_backgroundImage!.height}');
-        
-        // Calculate scaling to fit the canvas while maintaining aspect ratio
-        final imageWidth = _backgroundImage!.width.toDouble();
-        final imageHeight = _backgroundImage!.height.toDouble();
-        final scaleX = size.width / imageWidth;
-        final scaleY = size.height / imageHeight;
-        final scale = math.min(scaleX, scaleY);
-        
-        final scaledWidth = imageWidth * scale;
-        final scaledHeight = imageHeight * scale;
-        final offsetX = (size.width - scaledWidth) / 2;
-        final offsetY = (size.height - scaledHeight) / 2;
-        
-        final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
-        final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
-        
-        // First fill the area with white to avoid transparent edges
-        canvas.drawRect(rect, Paint()..color = Colors.white);
-        
-        // Use explicit paint settings to ensure proper rendering
-        final imagePaint = Paint()
-          ..isAntiAlias = true
-          ..filterQuality = FilterQuality.high;
-        
-        canvas.drawImageRect(_backgroundImage!, srcRect, destRect, imagePaint);
-        debugPrint('Network image drawn: ${scaledWidth}x${scaledHeight} at (${offsetX}, ${offsetY})');
-        
-        // Verify the image was drawn by checking a sample pixel
-        // This is a debugging step that will help us understand if the image is actually being rendered
-        debugPrint('Image drawn to canvas - Scale: $scale, DestRect: $destRect');
-      } else if (_backgroundType == BackgroundType.graphPaper) {
-        // Draw graph paper
-        canvas.drawRect(rect, Paint()..color = Colors.white);
-        final paint = Paint()
-          ..color = Colors.grey.shade300
-          ..strokeWidth = 1;
-        const gridSize = 20.0;
-        for (double x = 0; x <= size.width; x += gridSize) {
-          canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-        }
-        for (double y = 0; y <= size.height; y += gridSize) {
-          canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-        }
-        debugPrint('Drew graph paper background');
-      } else if (_backgroundType == BackgroundType.linedNotebook) {
-        // Draw lined notebook
-        canvas.drawRect(rect, Paint()..color = Colors.white);
-        final paint = Paint()
-          ..color = Colors.grey.shade300
-          ..strokeWidth = 1;
-        const lineSpacing = 25.0;
-        for (double y = lineSpacing; y <= size.height; y += lineSpacing) {
-          canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-        }
-        debugPrint('Drew lined notebook background');
-      } else if (_backgroundType == BackgroundType.blankCanvas) {
-        canvas.drawRect(rect, Paint()..color = _backgroundColor);
-        debugPrint('Drew blank canvas background');
-      }
-      
-      // Step 3: Draw all annotations with proper blend modes
-      debugPrint('Drawing ${_paintHistory.length} annotations');
-      for (int i = 0; i < _paintHistory.length; i++) {
-        final info = _paintHistory[i];
-        debugPrint('Drawing item $i: ${info.mode}');
-        
-        switch (info.mode) {
-          case PaintMode.freeStyle:
-            if (info.offsets.isNotEmpty) {
-              final paint = Paint()
-                ..color = info.color
-                ..strokeWidth = info.strokeWidth
-                ..strokeCap = StrokeCap.round
-                ..style = PaintingStyle.stroke
-                ..blendMode = BlendMode.srcOver;
-              
-              final path = Path();
-              bool hasMovedTo = false;
-              for (final offset in info.offsets) {
-                if (offset == null) {
-                  hasMovedTo = false;
-                } else {
-                  if (!hasMovedTo) {
-                    path.moveTo(offset.dx, offset.dy);
-                    hasMovedTo = true;
-                  } else {
-                    path.lineTo(offset.dx, offset.dy);
-                  }
-                }
-              }
-              canvas.drawPath(path, paint);
-              debugPrint('Drew freeStyle path with ${info.offsets.length} points');
-            }
-            break;
-            
-          case PaintMode.line:
-            if (info.offsets.length >= 2 && info.offsets[0] != null && info.offsets[1] != null) {
-              final paint = Paint()
-                ..color = info.color
-                ..strokeWidth = info.strokeWidth
-                ..strokeCap = StrokeCap.round
-                ..blendMode = BlendMode.srcOver;
-              canvas.drawLine(info.offsets[0]!, info.offsets[1]!, paint);
-              debugPrint('Drew line from ${info.offsets[0]} to ${info.offsets[1]}');
-            }
-            break;
-            
-          case PaintMode.rect:
-            if (info.offsets.length >= 2 && info.offsets[0] != null && info.offsets[1] != null) {
-              final paint = Paint()
-                ..color = info.color
-                ..strokeWidth = info.strokeWidth
-                ..style = info.fill ? PaintingStyle.fill : PaintingStyle.stroke
-                ..blendMode = BlendMode.srcOver;
-              final rect = Rect.fromPoints(info.offsets[0]!, info.offsets[1]!);
-              canvas.drawRect(rect, paint);
-              debugPrint('Drew rectangle: $rect');
-            }
-            break;
-            
-          case PaintMode.circle:
-            if (info.offsets.length >= 2 && info.offsets[0] != null && info.offsets[1] != null) {
-              final paint = Paint()
-                ..color = info.color
-                ..strokeWidth = info.strokeWidth
-                ..style = info.fill ? PaintingStyle.fill : PaintingStyle.stroke
-                ..blendMode = BlendMode.srcOver;
-              final center = info.offsets[0]!;
-              final radius = (info.offsets[1]! - center).distance;
-              canvas.drawCircle(center, radius, paint);
-              debugPrint('Drew circle at $center with radius $radius');
-            }
-            break;
-            
-          case PaintMode.text:
-            if (info.text != null && info.offsets.isNotEmpty && info.offsets[0] != null) {
-              debugPrint('Drawing text: "${info.text}" at ${info.offsets[0]} with fontSize ${info.strokeWidth * 4}');
-              
-              final textSpan = TextSpan(
-                text: info.text!,
-                style: TextStyle(
-                  color: info.color,
-                  fontSize: info.strokeWidth * 4,
-                  fontWeight: FontWeight.bold,
-                ),
-              );
-              
-              final textPainter = TextPainter(
-                text: textSpan,
-                textDirection: TextDirection.ltr,
-              );
-              
-              textPainter.layout();
-              final textSize = Size(textPainter.width, textPainter.height);
-              textPainter.paint(canvas, info.offsets[0]!);
-              textPainter.dispose();
-              
-              debugPrint('Text painted successfully with size: ${textSize.width}x${textSize.height}');
-            }
-            break;
-            
-          case PaintMode.arrow:
-            if (info.offsets.length >= 2 && info.offsets[0] != null && info.offsets[1] != null) {
-              final paint = Paint()
-                ..color = info.color
-                ..strokeWidth = info.strokeWidth
-                ..strokeCap = StrokeCap.round
-                ..blendMode = BlendMode.srcOver;
-              
-              final start = info.offsets[0]!;
-              final end = info.offsets[1]!;
-              
-              // Draw main line
-              canvas.drawLine(start, end, paint);
-              
-              // Draw arrow head
-              const arrowHeadLength = 20.0;
-              const arrowHeadAngle = 0.5;
-              final direction = (end - start);
-              final length = direction.distance;
-              
-              if (length > 0) {
-                final unitVector = direction / length;
-                final angle = math.atan2(unitVector.dy, unitVector.dx);
-                
-                final arrowHead1 = end - Offset(
-                  arrowHeadLength * math.cos(angle - arrowHeadAngle),
-                  arrowHeadLength * math.sin(angle - arrowHeadAngle),
-                );
-                final arrowHead2 = end - Offset(
-                  arrowHeadLength * math.cos(angle + arrowHeadAngle),
-                  arrowHeadLength * math.sin(angle + arrowHeadAngle),
-                );
-                
-                canvas.drawLine(end, arrowHead1, paint);
-                canvas.drawLine(end, arrowHead2, paint);
-              }
-              debugPrint('Drew arrow from $start to $end');
-            }
-            break;
-            
-          case PaintMode.dashedLine:
-            if (info.offsets.length >= 2 && info.offsets[0] != null && info.offsets[1] != null) {
-              final paint = Paint()
-                ..color = info.color
-                ..strokeWidth = info.strokeWidth
-                ..strokeCap = StrokeCap.round
-                ..blendMode = BlendMode.srcOver;
-              
-              final start = info.offsets[0]!;
-              final end = info.offsets[1]!;
-              final dashLength = 8.0 + (info.strokeWidth * 2);
-              final dashGap = 4.0 + (info.strokeWidth * 1.5);
-              final direction = end - start;
-              final distance = direction.distance;
-              
-              if (distance > 0) {
-                final unitVector = direction / distance;
-                double currentDistance = 0;
-                bool drawDash = true;
-                
-                while (currentDistance < distance) {
-                  final segmentLength = drawDash ? dashLength : dashGap;
-                  final nextDistance = math.min(currentDistance + segmentLength, distance);
-                  
-                  if (drawDash) {
-                    final segmentStart = start + unitVector * currentDistance;
-                    final segmentEnd = start + unitVector * nextDistance;
-                    canvas.drawLine(segmentStart, segmentEnd, paint);
-                  }
-                  
-                  currentDistance = nextDistance;
-                  drawDash = !drawDash;
-                }
-              }
-              debugPrint('Drew dashed line from $start to $end');
-            }
-            break;
-            
-          default:
-            debugPrint('Skipping unsupported paint mode: ${info.mode}');
-            break;
-        }
-      }
+      debugPrint('Finished drawing all elements using CustomPainter methods');
       
       final picture = recorder.endRecording();
       final img = await picture.toImage(size.width.toInt(), size.height.toInt());
+      
+      // Add debugging to verify the image was created properly
+      debugPrint('Picture recorded, converting to image: ${size.width.toInt()}x${size.height.toInt()}');
+      debugPrint('Image created successfully: ${img.width}x${img.height}');
       
       if (autoCrop && _paintHistory.isNotEmpty) {
         final bounds = _calculateContentBounds();
@@ -506,13 +266,38 @@ class EnhancedImagePainterController extends ChangeNotifier {
           
           final croppedImg = await _cropImage(img, cropRect);
           final byteData = await croppedImg.toByteData(format: ui.ImageByteFormat.png);
+          debugPrint('Cropped export completed, final image size: ${byteData?.lengthInBytes} bytes');
           return byteData?.buffer.asUint8List();
         }
       }
       
       final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
       debugPrint('Export completed, final image size: ${byteData?.lengthInBytes} bytes');
-      return byteData?.buffer.asUint8List();
+      
+      // Additional debugging: Try to verify the image has content
+      if (byteData != null) {
+        debugPrint('ByteData is not null, length: ${byteData.lengthInBytes}');
+        final bytes = byteData.buffer.asUint8List();
+        debugPrint('Uint8List created, length: ${bytes.length}');
+        
+        // Check if it's not just a blank image by examining some bytes
+        if (bytes.length > 100) {
+          var hasContent = false;
+          // Sample a few bytes to see if there's actual image data
+          for (int i = 50; i < math.min(bytes.length, 200); i += 10) {
+            if (bytes[i] != 0 && bytes[i] != 255) {
+              hasContent = true;
+              break;
+            }
+          }
+          debugPrint('Image appears to have content: $hasContent');
+        }
+        
+        return bytes;
+      } else {
+        debugPrint('ERROR: ByteData is null after image conversion');
+        return null;
+      }
       
     } catch (e, stackTrace) {
       debugPrint('Export error: $e');
