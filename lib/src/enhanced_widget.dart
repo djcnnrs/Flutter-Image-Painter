@@ -85,7 +85,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   int _textDragUpdateCount = 0; // Counter for throttling text drag updates
 
   // Pan/Zoom functionality
-  TransformationController _transformationController = TransformationController();
+  late TransformationController _transformationController;
   double _currentScale = 1.0;
   Offset _currentPanOffset = Offset.zero;
   
@@ -99,6 +99,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     try {
       _controller = EnhancedImagePainterController();
       _textController = TextEditingController();
+      _transformationController = TransformationController();
       
       // Set initial values from config
       _controller.setColor(widget.config.defaultColor);
@@ -108,7 +109,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _initializeCanvas();
       
     } catch (e) {
-      debugPrint('Error in initState: $e');
+      // Error in initState - handled silently for FlutterFlow compatibility
       rethrow;
     }
   }
@@ -130,7 +131,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     try {
       await _setupBackground();
     } catch (e) {
-      debugPrint('Error initializing canvas: $e');
+      // Error initializing canvas - handled silently for FlutterFlow compatibility
       _actualWidth = widget.width;
       _actualHeight = widget.height;
       _controller.setBackgroundType(BackgroundType.blankCanvas);
@@ -226,6 +227,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     );
   }
 
+  @override
   @override
   void dispose() {
     _controller.dispose();
@@ -423,11 +425,9 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         child: GestureDetector(
               onTapDown: (details) {
                 final offset = _transformToCanvasCoordinates(details.localPosition);
-                print('GESTURE: Tap down at screen: ${details.localPosition}, canvas: $offset');
                 
                 // Check if the tap is within canvas bounds
                 if (!_isPositionInCanvasBounds(offset)) {
-                  print('GESTURE: Tap outside canvas bounds');
                   return;
                 }
                 
@@ -440,12 +440,10 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                     // Clicking on existing text - prepare for potential drag or edit
                     _dragStartPosition = offset;
                     _draggingTextIndex = textIndex;
-                    print('GESTURE: Selected text for potential drag/edit at index $textIndex');
                     return;
                   } else {
                     // Clicking on empty space - add new text
                     _pendingTextPosition = offset;
-                    print('GESTURE: Adding new text at $offset');
                     _openTextDialog();
                     return;
                   }
@@ -456,7 +454,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                   // Clicking on text in non-text mode - prepare for potential drag
                   _dragStartPosition = offset;
                   _draggingTextIndex = textIndex;
-                  print('GESTURE: Selected text for drag in non-text mode');
                   // Don't start drawing gestures when clicking on text
                   return;
                 }
@@ -486,7 +483,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               },
               onPanStart: (details) {
                 final offset = _transformToCanvasCoordinates(details.localPosition);
-                print('GESTURE: Pan start at screen: ${details.localPosition}, canvas: $offset');
                 
                 // Check if the pan start is within canvas bounds
                 if (!_isPositionInCanvasBounds(offset)) {
@@ -510,7 +506,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                   return;
                 }
                 
-                print('GESTURE: Starting drawing gesture');
                 _controller.setStart(offset);
                 _controller.setInProgress(true);
                 
@@ -533,7 +528,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                   if (dragDistance > _dragThreshold) { // Threshold to differentiate tap from drag
                     _isDraggingText = true;
                     _repositionPreviewPosition = clampedOffset;
-                    print('GESTURE: Started dragging text');
                     setState(() {}); // Single setState call when starting drag
                     return;
                   }
@@ -573,8 +567,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                 }
               },
               onPanEnd: (details) {
-                print('GESTURE: Pan end');
-                
                 // Handle text dragging completion
                 if (_isDraggingText && _draggingTextIndex != null && _repositionPreviewPosition != null) {
                   // Clamp the final position to canvas bounds
@@ -689,10 +681,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         // Handle transformation state when switching modes
         if (previousMode != PaintMode.none && mode == PaintMode.none) {
           // Entering pan/zoom mode - preserve current transformation
-          print('MODE: Switching from ${_getModeLabel(previousMode)} to Pan/Zoom');
         } else if (previousMode == PaintMode.none && mode != PaintMode.none) {
           // Leaving pan/zoom mode - transformation should be preserved
-          print('MODE: Switching from Pan/Zoom to ${_getModeLabel(mode)}');
         }
       },
       itemBuilder: (context) {
@@ -993,7 +983,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       }
       
     } catch (e) {
-      debugPrint('Error updating text content: $e');
+      // Error updating text content - handled silently for FlutterFlow compatibility
     } finally {
       _cleanupTextEditing();
     }
@@ -1032,7 +1022,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       }
       
     } catch (e) {
-      debugPrint('Error updating text position: $e');
+      // Error updating text position - handled silently for FlutterFlow compatibility
     } finally {
       _cleanupTextEditing();
     }
