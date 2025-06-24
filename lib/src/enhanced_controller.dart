@@ -214,19 +214,41 @@ class EnhancedImagePainterController extends ChangeNotifier {
     print('EXPORT: Background type: $backgroundType, Image: ${backgroundImage != null}');
     print('EXPORT: Paint history: ${_paintHistory.length} items');
     
+    if (_backgroundType == BackgroundType.networkImage) {
+      print('EXPORT: Network image details - URL: $_backgroundImageUrl, Image loaded: ${_backgroundImage != null}');
+      if (_backgroundImage != null) {
+        print('EXPORT: Network image size: ${_backgroundImage!.width}x${_backgroundImage!.height}');
+      }
+    }
+    
     try {
       // For network images, ensure the background image is available
       if (_backgroundType == BackgroundType.networkImage && _backgroundImage == null && _backgroundImageUrl != null) {
         print('EXPORT: Background image not loaded, attempting to load...');
         await loadBackgroundImage(_backgroundImageUrl!);
         // Wait a moment for the image to be fully processed
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 200));
         print('EXPORT: Background loaded after delay: ${_backgroundImage != null}');
       }
+      
+      // Ensure we have a valid size
+      if (size.width <= 0 || size.height <= 0) {
+        print('EXPORT: ERROR - Invalid size: ${size.width}x${size.height}');
+        return null;
+      }
+      
+      // Use the exact export size requested
+      final exportSize = Size(size.width, size.height);
+      print('EXPORT: Final export size: ${exportSize.width}x${exportSize.height}');
       
       // Create the export canvas
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
+      
+      // Fill the entire canvas with white background first to ensure no transparency
+      final whiteRect = Rect.fromLTWH(0, 0, exportSize.width, exportSize.height);
+      canvas.drawRect(whiteRect, Paint()..color = Colors.white);
+      print('EXPORT: Drew white background base');
       
       // Temporarily disable the current stroke for export
       final originalInProgress = _inProgress;
@@ -236,23 +258,33 @@ class EnhancedImagePainterController extends ChangeNotifier {
       _start = null;
       _end = null;
       
-      // Draw background directly instead of using CustomPainter
-      _drawExportBackground(canvas, size);
-      
-      // Draw all completed annotations/strokes
-      print('EXPORT: Drawing ${_paintHistory.length} annotations');
-      for (final info in _paintHistory) {
-        _drawExportPaintInfo(canvas, info);
+      try {
+        // Draw background 
+        _drawExportBackground(canvas, exportSize);
+        
+        // Draw all completed annotations/strokes
+        print('EXPORT: Drawing ${_paintHistory.length} annotations');
+        for (int i = 0; i < _paintHistory.length; i++) {
+          final info = _paintHistory[i];
+          print('EXPORT: Drawing annotation $i: ${info.mode} with ${info.offsets.length} offsets');
+          if (info.mode == PaintMode.text && info.text != null) {
+            print('EXPORT: Text annotation: "${info.text}" at ${info.offsets.isNotEmpty ? info.offsets[0] : 'no position'}');
+          }
+          _drawExportPaintInfo(canvas, info);
+        }
+        
+      } catch (e) {
+        print('EXPORT: ERROR during drawing: $e');
+      } finally {
+        // Restore the original in-progress state
+        _inProgress = originalInProgress;
+        _start = originalStart;
+        _end = originalEnd;
       }
-      
-      // Restore the original in-progress state
-      _inProgress = originalInProgress;
-      _start = originalStart;
-      _end = originalEnd;
       
       final picture = recorder.endRecording();      
       print('EXPORT: Converting to image...');
-      final img = await picture.toImage(size.width.toInt(), size.height.toInt());
+      final img = await picture.toImage(exportSize.width.toInt(), exportSize.height.toInt());
       print('EXPORT: Image created: ${img.width}x${img.height}');
       
       if (autoCrop && _paintHistory.isNotEmpty) {
@@ -262,8 +294,8 @@ class EnhancedImagePainterController extends ChangeNotifier {
           final cropRect = Rect.fromLTRB(
             math.max(0, bounds.left - padding),
             math.max(0, bounds.top - padding),
-            math.min(size.width, bounds.right + padding),
-            math.min(size.height, bounds.bottom + padding),
+            math.min(exportSize.width, bounds.right + padding),
+            math.min(exportSize.height, bounds.bottom + padding),
           );
           
           final croppedImg = await _cropImage(img, cropRect);
@@ -354,6 +386,12 @@ class EnhancedImagePainterController extends ChangeNotifier {
       return;
     }
     
+    // Don't reload if we're just switching modes but keeping the same URL
+    if (_backgroundImageUrl == url && _backgroundImage != null) {
+      print('Background image already available for URL: $url');
+      return;
+    }
+    
     try {
       print('Loading background image: $url');
       final completer = Completer<ui.Image>();
@@ -370,14 +408,21 @@ class EnhancedImagePainterController extends ChangeNotifier {
       
       final loadedImage = await completer.future;
       
-      // Only update if the image actually changed
+      // Only update if the image actually changed to prevent unnecessary rebuilds
       if (_backgroundImage != loadedImage) {
         _backgroundImage = loadedImage;
+        _backgroundImageUrl = url; // Update URL after successful load
         print('Background image loaded: ${_backgroundImage!.width}x${_backgroundImage!.height}');
+        // Only notify listeners if image actually changed
         notifyListeners();
+      } else {
+        print('Background image unchanged - no notification needed');
       }
     } catch (e) {
       print('Failed to load background image: $e');
+      // Reset state on failure
+      _backgroundImage = null;
+      _backgroundImageUrl = null;
     }
   }
 
@@ -385,7 +430,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
   void _drawExportBackground(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     
-    print('EXPORT: Drawing background $_backgroundType');
+    print('EXPORT: Drawing background $_backgroundType for size ${size.width}x${size.height}');
     
     switch (_backgroundType) {
       case BackgroundType.blankCanvas:
@@ -402,20 +447,20 @@ class EnhancedImagePainterController extends ChangeNotifier {
         break;
       case BackgroundType.networkImage:
         if (_backgroundImage != null) {
-          print('EXPORT: Drawing network image ${_backgroundImage!.width}x${_backgroundImage!.height}');
+          print('EXPORT: Drawing network image ${_backgroundImage!.width}x${_backgroundImage!.height} into ${size.width}x${size.height}');
           
           // First, fill the background with white to ensure no transparency
           canvas.drawRect(rect, Paint()..color = Colors.white);
           print('EXPORT: Drew white background base');
           
           try {
-            // Calculate how to fit the image within the canvas while maintaining aspect ratio
+            // Use the EXACT same scaling logic as the display CustomPainter
             final imageWidth = _backgroundImage!.width.toDouble();
             final imageHeight = _backgroundImage!.height.toDouble();
-            final canvasWidth = rect.width;
-            final canvasHeight = rect.height;
+            final canvasWidth = size.width;
+            final canvasHeight = size.height;
             
-            // Calculate scaling factor to fit image within canvas
+            // Calculate scaling factor to fit image within canvas (same as display)
             final scaleX = canvasWidth / imageWidth;
             final scaleY = canvasHeight / imageHeight;
             final scale = math.min(scaleX, scaleY); // Use smaller scale to maintain aspect ratio
@@ -424,21 +469,26 @@ class EnhancedImagePainterController extends ChangeNotifier {
             final scaledWidth = imageWidth * scale;
             final scaledHeight = imageHeight * scale;
             
-            // Center the image within the canvas
+            // Center the image within the canvas (same as display)
             final offsetX = (canvasWidth - scaledWidth) / 2;
             final offsetY = (canvasHeight - scaledHeight) / 2;
             
             print('EXPORT: Image scaling - original: ${imageWidth}x${imageHeight}, scale: $scale, final: ${scaledWidth}x${scaledHeight}, offset: ($offsetX, $offsetY)');
             
-            // Draw the image with proper scaling and centering
+            // Draw the image with proper scaling and centering (same as display)
             final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
             final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
+            
+            // Use the same paint settings as display CustomPainter
+            final imagePaint = Paint()
+              ..isAntiAlias = true
+              ..filterQuality = FilterQuality.high;
             
             canvas.drawImageRect(
               _backgroundImage!,
               srcRect,
               destRect,
-              Paint()..isAntiAlias = true..filterQuality = FilterQuality.high,
+              imagePaint,
             );
             print('EXPORT: Network image drawn successfully to rect: $destRect');
             
