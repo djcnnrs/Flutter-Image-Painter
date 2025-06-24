@@ -258,7 +258,9 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   /// Helper method to get canvas width
   double _getCanvasWidth() {
     return _isNetworkImage() ? _actualWidth : widget.width;
-  }  /// Helper method to get canvas height
+  }
+
+  /// Helper method to get canvas height
   double _getCanvasHeight() {
     return _isNetworkImage() ? _actualHeight : (widget.height - _toolbarHeight);
   }
@@ -668,7 +670,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
   Widget _buildFillOption() {
     // Removed AnimatedBuilder to prevent unnecessary rebuilds
-    if (!_controller.canFill()) return SizedBox.shrink();
+    if (!_controller.canFill()) return const SizedBox.shrink();
     
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -683,7 +685,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             return Colors.white;
           }),
         ),
-        Text('Fill', style: TextStyle(color: Colors.white)), // White text for dark background
+        const Text('Fill', style: TextStyle(color: Colors.white)), // White text for dark background
       ],
     );
   }
@@ -700,7 +702,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       },
       tooltip: isEmpty ? 'Canvas is Empty' : 'Save',
     );
-  }
   }
 
   Widget _buildModeSelector() {
@@ -727,7 +728,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             child: Row(
               children: [
                 Icon(_getModeIcon(mode)),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(_getModeLabel(mode)),
               ],
             ),
@@ -765,7 +766,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               child: Container(
                 width: 30,
                 height: 30,
-                margin: EdgeInsets.all(2),
+                margin: const EdgeInsets.all(2),
                 decoration: BoxDecoration(
                   color: color,
                   shape: BoxShape.circle,
@@ -789,14 +790,14 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             bottom: 0,
             right: 0,
             child: Container(
-              padding: EdgeInsets.all(1),
+              padding: const EdgeInsets.all(1),
               decoration: BoxDecoration(
                 color: Colors.blue,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 '${_controller.strokeWidth.toInt()}',
-                style: TextStyle(color: Colors.white, fontSize: 8),
+                style: const TextStyle(color: Colors.white, fontSize: 8),
               ),
             ),
           ),
@@ -812,7 +813,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               _StrokeSliderWidget(
                 controller: _controller,
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
@@ -1211,7 +1212,7 @@ class _StrokeSliderWidgetState extends State<_StrokeSliderWidget> {
             'Stroke Width: ${_currentStrokeWidth.toInt()}px',
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Slider(
             value: _currentStrokeWidth,
             min: 2,
