@@ -287,7 +287,12 @@ class EnhancedImagePainterController extends ChangeNotifier {
           if (info.mode == PaintMode.text && info.text != null) {
             print('EXPORT: Text annotation: "${info.text}" at ${info.offsets.isNotEmpty ? info.offsets[0] : 'no position'}');
           }
-          _drawExportPaintInfo(canvas, info);
+          try {
+            _drawExportPaintInfo(canvas, info);
+            print('EXPORT: Successfully drew annotation $i');
+          } catch (e) {
+            print('EXPORT: ERROR drawing annotation $i: $e');
+          }
         }
         
       } catch (e) {
@@ -561,6 +566,8 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   void _drawExportPaintInfo(Canvas canvas, PaintInfo info) {
+    print('EXPORT: _drawExportPaintInfo called for ${info.mode}');
+    
     final paint = Paint()
       ..color = info.color
       ..strokeWidth = info.strokeWidth
@@ -570,16 +577,19 @@ class EnhancedImagePainterController extends ChangeNotifier {
 
     switch (info.mode) {
       case PaintMode.freeStyle:
+        print('EXPORT: Drawing freeStyle with ${info.offsets.length} offsets');
         _drawExportFreeStyle(canvas, info.offsets, paint);
         break;
       case PaintMode.line:
         if (info.offsets.length >= 2) {
+          print('EXPORT: Drawing line from ${info.offsets[0]} to ${info.offsets[1]}');
           canvas.drawLine(info.offsets[0]!, info.offsets[1]!, paint);
         }
         break;
       case PaintMode.rect:
         if (info.offsets.length >= 2) {
           final rect = Rect.fromPoints(info.offsets[0]!, info.offsets[1]!);
+          print('EXPORT: Drawing rect $rect');
           canvas.drawRect(rect, paint);
         }
         break;
@@ -587,6 +597,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
         if (info.offsets.length >= 2) {
           final center = info.offsets[0]!;
           final radius = (info.offsets[1]! - center).distance;
+          print('EXPORT: Drawing circle at $center with radius $radius');
           canvas.drawCircle(center, radius, paint);
         }
         break;
@@ -598,30 +609,39 @@ class EnhancedImagePainterController extends ChangeNotifier {
         break;
       case PaintMode.arrow:
         if (info.offsets.length >= 2) {
+          print('EXPORT: Drawing arrow from ${info.offsets[0]} to ${info.offsets[1]}');
           _drawExportArrow(canvas, info.offsets[0]!, info.offsets[1]!, paint);
         }
         break;
       case PaintMode.dashedLine:
         if (info.offsets.length >= 2) {
+          print('EXPORT: Drawing dashed line from ${info.offsets[0]} to ${info.offsets[1]}');
           _drawExportDashedLine(canvas, info.offsets[0]!, info.offsets[1]!, paint);
         }
         break;
       default:
+        print('EXPORT: Unknown paint mode: ${info.mode}');
         break;
     }
   }
 
   void _drawExportFreeStyle(Canvas canvas, List<Offset?> offsets, Paint paint) {
-    if (offsets.isEmpty) return;
+    print('EXPORT: _drawExportFreeStyle called with ${offsets.length} offsets');
+    if (offsets.isEmpty) {
+      print('EXPORT: FreeStyle - no offsets to draw');
+      return;
+    }
     
     final path = Path();
     bool hasMovedTo = false;
+    int validPoints = 0;
     
     for (int i = 0; i < offsets.length; i++) {
       final offset = offsets[i];
       if (offset == null) {
         hasMovedTo = false;
       } else {
+        validPoints++;
         if (!hasMovedTo) {
           path.moveTo(offset.dx, offset.dy);
           hasMovedTo = true;
@@ -641,6 +661,7 @@ class EnhancedImagePainterController extends ChangeNotifier {
       }
     }
     
+    print('EXPORT: FreeStyle - drawing path with $validPoints valid points');
     canvas.drawPath(path, paint);
   }
 
@@ -734,13 +755,19 @@ class EnhancedImageCustomPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    print('PAINT: Starting paint ${size.width}x${size.height}');
+    // Only log paint start in development mode, not every single paint call
+    if (_paintCallCount < 5) {
+      print('PAINT: Starting paint ${size.width}x${size.height}');
+      _paintCallCount++;
+    }
     
     // Draw background first
     _drawBackground(canvas, size);
     
     // Draw all completed strokes
-    print('PAINT: Drawing ${controller.paintHistory.length} paint items');
+    if (_paintCallCount < 5) {
+      print('PAINT: Drawing ${controller.paintHistory.length} paint items');
+    }
     for (final info in controller.paintHistory) {
       _drawPaintInfo(canvas, info);
     }
@@ -752,6 +779,8 @@ class EnhancedImageCustomPainter extends CustomPainter {
     
     controller._clearRepaintFlag();
   }
+
+  static int _paintCallCount = 0;
 
   void _drawBackground(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);

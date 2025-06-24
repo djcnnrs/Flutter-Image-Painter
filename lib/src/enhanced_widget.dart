@@ -302,18 +302,20 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   Offset _transformToCanvasCoordinates(Offset screenPosition) {
     print('TRANSFORM: Screen position: $screenPosition');
     
+    // Always apply transformation if we have one (either from current InteractiveViewer or saved)
+    Matrix4? currentTransform = _savedTransformation;
+    
+    // If we're in pan/zoom mode, use the current transformation
     if (_controller.mode == PaintMode.none) {
-      // In pan/zoom mode, InteractiveViewer handles coordinate transformation internally
-      // We should not apply additional transformation here - the coordinates are already correct
-      print('TRANSFORM: Pan/zoom mode - using screen position directly: $screenPosition');
-      return screenPosition;
+      currentTransform = _transformationController.value;
+      print('TRANSFORM: Using current InteractiveViewer transform');
     }
     
-    // In drawing modes, we need to account for any saved transformation from pan/zoom
-    if (_savedTransformation != null) {
+    // Apply inverse transformation if we have any transformation
+    if (currentTransform != null && !currentTransform.isIdentity()) {
       try {
         // Apply inverse transformation to get true canvas coordinates
-        final Matrix4 inverse = Matrix4.inverted(_savedTransformation!);
+        final Matrix4 inverse = Matrix4.inverted(currentTransform);
         final vector.Vector3 transformed = inverse.transform3(
           vector.Vector3(screenPosition.dx, screenPosition.dy, 0)
         );
