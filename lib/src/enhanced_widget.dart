@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:vector_math/vector_math_64.dart' as vector;
 import 'enhanced_controller.dart';
 
 /// Configuration for the Enhanced Image Painter
@@ -157,7 +156,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _actualHeight = widget.height;
     } else {
       // Network image
-      print('SETUP: Loading network image: $bgImage');
       try {
         // Set the background type and URL first
         _controller.setBackgroundType(BackgroundType.networkImage);
@@ -167,7 +165,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         await _controller.loadBackgroundImage(bgImage);
         
         if (_controller.backgroundImage != null) {
-          print('SETUP: Network image loaded successfully: ${_controller.backgroundImage!.width}x${_controller.backgroundImage!.height}');
           // Calculate scaled dimensions to fit within provided canvas size
           final imageWidth = _controller.backgroundImage!.width.toDouble();
           final imageHeight = _controller.backgroundImage!.height.toDouble();
@@ -182,14 +179,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           // Set scaled dimensions
           _actualWidth = imageWidth * scale;
           _actualHeight = imageHeight * scale;
-          print('SETUP: Calculated display size: ${_actualWidth}x${_actualHeight}');
         } else {
-          print('SETUP: Failed to load network image, using default size');
           _actualWidth = widget.width;
           _actualHeight = widget.height;
         }
       } catch (e) {
-        print('SETUP: Error loading network image: $e');
         _controller.setBackgroundType(BackgroundType.blankCanvas);
         _actualWidth = widget.width;
         _actualHeight = widget.height;
@@ -203,11 +197,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     // This should match exactly what is displayed on screen
     final double exportWidth = _getCanvasWidth();
     final double exportHeight = _getCanvasHeight();
-    
-    print('EXPORT: Calculated export size: ${exportWidth}x${exportHeight}');
-    print('EXPORT: Display canvas size: ${_getCanvasWidth()}x${_getCanvasHeight()}');
-    print('EXPORT: Widget size: ${widget.width}x${widget.height}');
-    print('EXPORT: Actual size: ${_actualWidth}x${_actualHeight}');
     
     return await _controller.exportImage(Size(exportWidth, exportHeight), autoCrop: autoCrop);
   }
@@ -303,37 +292,28 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   /// Transform screen coordinates to canvas coordinates
   /// This accounts for any pan/zoom transformations that might be applied
   Offset _transformToCanvasCoordinates(Offset screenPosition) {
-    print('TRANSFORM: Screen position: $screenPosition');
-    
     // Always apply transformation if we have one (either from current InteractiveViewer or saved)
     Matrix4? currentTransform = _savedTransformation;
     
     // If we're in pan/zoom mode, use the current transformation
     if (_controller.mode == PaintMode.none) {
       currentTransform = _transformationController.value;
-      print('TRANSFORM: Using current InteractiveViewer transform');
     }
     
     // Apply inverse transformation if we have any transformation
     if (currentTransform != null && !currentTransform.isIdentity()) {
       try {
-        // Apply inverse transformation to get true canvas coordinates
+        // Apply inverse transformation to get true canvas coordinates using Matrix4
         final Matrix4 inverse = Matrix4.inverted(currentTransform);
-        final vector.Vector3 transformed = inverse.transform3(
-          vector.Vector3(screenPosition.dx, screenPosition.dy, 0)
-        );
-        final canvasPos = Offset(transformed.x, transformed.y);
-        print('TRANSFORM: Applied inverse transform - screen: $screenPosition -> canvas: $canvasPos');
-        return canvasPos;
+        final Offset transformedPoint = MatrixUtils.transformPoint(inverse, screenPosition);
+        return transformedPoint;
       } catch (e) {
-        print('ERROR: Failed to transform coordinates: $e');
-        print('TRANSFORM: Falling back to screen position: $screenPosition');
+        // Fallback to screen position if transformation fails
         return screenPosition;
       }
     }
     
     // No transformation needed
-    print('TRANSFORM: No transformation - using screen position: $screenPosition');
     return screenPosition;
   }
 
@@ -341,9 +321,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   /// This is used for positioning UI elements that need to align with canvas content
   Offset _transformToScreenCoordinates(Offset canvasPosition) {
     if (_controller.mode == PaintMode.none) {
-      // In pan/zoom mode, use the current transformation
-      final vector.Vector3 transformed = _transformationController.value.transform3(vector.Vector3(canvasPosition.dx, canvasPosition.dy, 0));
-      return Offset(transformed.x, transformed.y);  
+      // In pan/zoom mode, use the current transformation with MatrixUtils
+      return MatrixUtils.transformPoint(_transformationController.value, canvasPosition);
     }
     
     // In drawing modes, coordinates are already screen coordinates
@@ -407,7 +386,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
     // In pan/zoom mode, wrap with InteractiveViewer
     if (_controller.mode == PaintMode.none) {
-      print('CANVAS: Using InteractiveViewer for pan/zoom mode');
       return InteractiveViewer(
         transformationController: _transformationController,
         minScale: 0.5,
@@ -419,7 +397,6 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           _currentScale = _transformationController.value.getMaxScaleOnAxis();
           final translation = _transformationController.value.getTranslation();
           _currentPanOffset = Offset(translation.x, translation.y);
-          print('TRANSFORM: Pan/zoom started - scale: $_currentScale, pan: $_currentPanOffset');
         },
         onInteractionUpdate: (details) {
           _currentScale = _transformationController.value.getMaxScaleOnAxis();
@@ -429,17 +406,14 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
         onInteractionEnd: (details) {
           // Save the transformation when pan/zoom interaction ends
           _savedTransformation = Matrix4.copy(_transformationController.value);
-          print('TRANSFORM: Pan/zoom ended - saved transformation');
           _logTransformationState();
         },
         child: canvasWidget,
       );
     } else {
-      print('CANVAS: Using GestureDetector for drawing mode ${_controller.mode}');
       // In drawing modes, ensure transformation is applied if we have saved state
       if (_savedTransformation != null && 
           (_transformationController.value != _savedTransformation)) {
-        print('CANVAS: Restoring saved transformation for drawing mode');
         _transformationController.value = Matrix4.copy(_savedTransformation!);
       }
       
@@ -818,7 +792,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('Close'),
+                  child: const Text('Close'),
                 ),
               ),
             ],
@@ -888,11 +862,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       context: context,
       barrierDismissible: false, // Prevent dismissing accidentally
       builder: (context) => AlertDialog(
-        title: Text('Add Text'),
+        title: const Text('Add Text'),
         content: TextField(
           controller: _textController,
           autofocus: true,
-          decoration: InputDecoration(hintText: 'Enter text'),
+          decoration: const InputDecoration(hintText: 'Enter text'),
           onSubmitted: (text) {
             // Allow Enter key to submit
             if (text.trim().isNotEmpty && _pendingTextPosition != null) {
@@ -908,7 +882,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               _textController.clear();
               Navigator.pop(context);
             },
-            child: Text('Cancel'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
@@ -917,7 +891,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                 Navigator.pop(context);
               }
             },
-            child: Text('Add'),
+            child: const Text('Add'),
           ),
         ],
       ),
@@ -945,11 +919,11 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       context: context,
       barrierDismissible: false, // Prevent accidental dismissal
       builder: (context) => AlertDialog(
-        title: Text('Edit Text'),
+        title: const Text('Edit Text'),
         content: TextField(
           controller: _textController,
           autofocus: true,
-          decoration: InputDecoration(hintText: 'Edit text'),
+          decoration: const InputDecoration(hintText: 'Edit text'),
           onSubmitted: (text) {
             // Allow Enter key to update
             if (text.trim().isNotEmpty) {
@@ -964,7 +938,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
               Navigator.pop(context);
               _cleanupTextEditing();
             },
-            child: Text('Cancel'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
@@ -975,7 +949,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                 _cleanupTextEditing();
               }
             },
-            child: Text('Update'),
+            child: const Text('Update'),
           ),
         ],
       ),
@@ -1170,15 +1144,15 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     _savedTransformation = null;
     _currentScale = 1.0;
     _currentPanOffset = Offset.zero;
-    print('TRANSFORM: Reset to identity');
   }
 
-  /// Get current transformation info for debugging
+  /// Update current transformation info  
   void _logTransformationState() {
     final matrix = _transformationController.value;
     final scale = matrix.getMaxScaleOnAxis();
     final translation = matrix.getTranslation();
-    print('TRANSFORM: Current state - scale: $scale, translation: (${translation.x}, ${translation.y})');
+    _currentScale = scale;
+    _currentPanOffset = Offset(translation.x, translation.y);
   }
 }
 
@@ -1210,7 +1184,7 @@ class _StrokeSliderWidgetState extends State<_StrokeSliderWidget> {
         children: [
           Text(
             'Stroke Width: ${_currentStrokeWidth.toInt()}px',
-            style: TextStyle(fontWeight: FontWeight.bold),
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Slider(
@@ -1227,7 +1201,7 @@ class _StrokeSliderWidgetState extends State<_StrokeSliderWidget> {
             },
           ),
           // Visual preview of stroke width
-          Container(
+          SizedBox(
             height: 30,
             child: Center(
               child: Container(

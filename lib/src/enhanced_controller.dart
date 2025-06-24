@@ -149,8 +149,6 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   void addPaintInfo(PaintInfo info) {
-    print('ADD_PAINT: Adding ${info.mode} with ${info.offsets.length} offsets, text: "${info.text}"');
-    
     // Optimize stroke points for freeStyle to prevent memory issues
     PaintInfo optimizedInfo = info;
     if (info.mode == PaintMode.freeStyle && info.offsets.length > 100) {
@@ -162,26 +160,12 @@ class EnhancedImagePainterController extends ChangeNotifier {
         fill: info.fill,
         text: info.text,
       );
-      print('ADD_PAINT: Optimized freeStyle from ${info.offsets.length} to ${optimizedInfo.offsets.length} points');
     }
     
     _paintHistory.add(optimizedInfo);
-    print('ADD_PAINT: Paint history now has ${_paintHistory.length} items');
     
     _markForRepaint();
     notifyListeners();
-    
-    // Debug: Print current paint history
-    debugPaintHistory();
-  }
-
-  /// Debug method to log paint history
-  void debugPaintHistory() {
-    print('PAINT HISTORY DEBUG: ${_paintHistory.length} items');
-    for (int i = 0; i < _paintHistory.length; i++) {
-      final info = _paintHistory[i];
-      print('  [$i] ${info.mode} - color: ${info.color}, stroke: ${info.strokeWidth}, offsets: ${info.offsets.length}, text: "${info.text}"');
-    }
   }
 
   /// Optimizes stroke points by removing redundant points while maintaining visual quality
@@ -240,36 +224,25 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   Future<Uint8List?> exportImage(Size size, {bool autoCrop = false}) async {
-    print('EXPORT: Starting export ${size.width}x${size.height}');
-    print('EXPORT: Background type: $backgroundType, Image: ${backgroundImage != null}');
-    print('EXPORT: Paint history: ${_paintHistory.length} items');
-    
     if (_backgroundType == BackgroundType.networkImage) {
-      print('EXPORT: Network image details - URL: $_backgroundImageUrl, Image loaded: ${_backgroundImage != null}');
-      if (_backgroundImage != null) {
-        print('EXPORT: Network image size: ${_backgroundImage!.width}x${_backgroundImage!.height}');
-      }
+      // No debug output for FlutterFlow compatibility
     }
     
     try {
       // For network images, ensure the background image is available
       if (_backgroundType == BackgroundType.networkImage && _backgroundImage == null && _backgroundImageUrl != null) {
-        print('EXPORT: Background image not loaded, attempting to load...');
         await loadBackgroundImage(_backgroundImageUrl!);
         // Wait a moment for the image to be fully processed
         await Future.delayed(const Duration(milliseconds: 200));
-        print('EXPORT: Background loaded after delay: ${_backgroundImage != null}');
       }
       
       // Ensure we have a valid size
       if (size.width <= 0 || size.height <= 0) {
-        print('EXPORT: ERROR - Invalid size: ${size.width}x${size.height}');
         return null;
       }
       
       // Use the exact export size requested, but ensure whole numbers for canvas
       final exportSize = Size(size.width.roundToDouble(), size.height.roundToDouble());
-      print('EXPORT: Final export size: ${exportSize.width}x${exportSize.height} (rounded from ${size.width}x${size.height})');
       
       // Create the export canvas
       final recorder = ui.PictureRecorder();
@@ -278,7 +251,6 @@ class EnhancedImagePainterController extends ChangeNotifier {
       // Fill the entire canvas with white background first to ensure no transparency
       final whiteRect = Rect.fromLTWH(0, 0, exportSize.width, exportSize.height);
       canvas.drawRect(whiteRect, Paint()..color = Colors.white);
-      print('EXPORT: Drew white background base');
       
       // Temporarily disable the current stroke for export
       final originalInProgress = _inProgress;
@@ -293,35 +265,18 @@ class EnhancedImagePainterController extends ChangeNotifier {
         _drawExportBackground(canvas, exportSize);
         
         // Draw all completed annotations/strokes
-        print('EXPORT: Drawing ${_paintHistory.length} annotations');
-        print('EXPORT: Canvas bounds: 0,0 to ${exportSize.width},${exportSize.height}');
         for (int i = 0; i < _paintHistory.length; i++) {
           final info = _paintHistory[i];
-          print('EXPORT: Drawing annotation $i: ${info.mode} with ${info.offsets.length} offsets');
-          if (info.mode == PaintMode.text && info.text != null) {
-            print('EXPORT: Text annotation: "${info.text}" at ${info.offsets.isNotEmpty ? info.offsets[0] : 'no position'}');
-          }
-          // Check if offsets are within canvas bounds
-          for (int j = 0; j < info.offsets.length; j++) {
-            final offset = info.offsets[j];
-            if (offset != null) {
-              final inBounds = offset.dx >= 0 && offset.dx <= exportSize.width && 
-                             offset.dy >= 0 && offset.dy <= exportSize.height;
-              if (!inBounds) {
-                print('EXPORT: WARNING - Offset $j ($offset) is outside canvas bounds!');
-              }
-            }
-          }
+          
           try {
             _drawExportPaintInfo(canvas, info);
-            print('EXPORT: Successfully drew annotation $i');
           } catch (e) {
-            print('EXPORT: ERROR drawing annotation $i: $e');
+            // Silently skip problematic annotations for FlutterFlow compatibility
           }
         }
         
       } catch (e) {
-        print('EXPORT: ERROR during drawing: $e');
+        // Silently handle export drawing errors for FlutterFlow compatibility
       } finally {
         // Restore the original in-progress state
         _inProgress = originalInProgress;
@@ -330,15 +285,12 @@ class EnhancedImagePainterController extends ChangeNotifier {
       }
       
       final picture = recorder.endRecording();      
-      print('EXPORT: Converting to image...');
       
       // Ensure we use integer dimensions for the final image
       final imageWidth = exportSize.width.round();
       final imageHeight = exportSize.height.round();
-      print('EXPORT: Creating image with integer dimensions: ${imageWidth}x${imageHeight}');
       
       final img = await picture.toImage(imageWidth, imageHeight);
-      print('EXPORT: Image created: ${img.width}x${img.height}');
       
       if (autoCrop && _paintHistory.isNotEmpty) {
         final bounds = _calculateContentBounds();
@@ -353,7 +305,6 @@ class EnhancedImagePainterController extends ChangeNotifier {
           
           final croppedImg = await _cropImage(img, cropRect);
           final byteData = await croppedImg.toByteData(format: ui.ImageByteFormat.png);
-          print('EXPORT: Cropped export completed, final image size: ${byteData?.lengthInBytes} bytes');
           return byteData?.buffer.asUint8List();
         }
       }
@@ -362,16 +313,12 @@ class EnhancedImagePainterController extends ChangeNotifier {
       
       if (byteData != null) {
         final bytes = byteData.buffer.asUint8List();
-        print('EXPORT: Success - ${bytes.length} bytes');
         return bytes;
       } else {
-        print('EXPORT: ERROR - ByteData is null');
         return null;
       }
       
     } catch (e, stackTrace) {
-      print('EXPORT: ERROR - $e');
-      print('EXPORT: Stack trace: $stackTrace');
       return null;
     }
   }
@@ -433,26 +380,19 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   Future<void> loadBackgroundImage(String url) async {
-    print('LOAD: Request to load background image: $url');
-    print('LOAD: Current state - URL: $_backgroundImageUrl, Image loaded: ${_backgroundImage != null}');
-    
     // Prevent reloading the same image
     if (_backgroundImageUrl == url && _backgroundImage != null) {
-      print('LOAD: Background image already loaded for URL: $url');
       return;
     }
     
     try {
-      print('LOAD: Starting to load background image: $url');
       final completer = Completer<ui.Image>();
       final img = NetworkImage(url);
       
       img.resolve(const ImageConfiguration()).addListener(
         ImageStreamListener((info, _) {
-          print('LOAD: Image loaded successfully from network');
           completer.complete(info.image);
         }, onError: (error, stackTrace) {
-          print('LOAD: Image loading error: $error');
           completer.completeError(error);
         })
       );
@@ -463,14 +403,11 @@ class EnhancedImagePainterController extends ChangeNotifier {
       // because the ui.Image object might be different
       _backgroundImage = loadedImage;
       _backgroundImageUrl = url;
-      print('LOAD: Background image loaded successfully: ${_backgroundImage!.width}x${_backgroundImage!.height}');
       
       // Always notify listeners when we successfully load an image
       notifyListeners();
-      print('LOAD: Notified listeners of image change');
       
     } catch (e) {
-      print('LOAD: Failed to load background image: $e');
       // Reset state on failure
       _backgroundImage = null;
       _backgroundImageUrl = null;
@@ -482,28 +419,20 @@ class EnhancedImagePainterController extends ChangeNotifier {
   void _drawExportBackground(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     
-    print('EXPORT: Drawing background $_backgroundType for size ${size.width}x${size.height}');
-    
     switch (_backgroundType) {
       case BackgroundType.blankCanvas:
         canvas.drawRect(rect, Paint()..color = _backgroundColor);
-        print('EXPORT: Drew blank canvas with color $_backgroundColor');
         break;
       case BackgroundType.graphPaper:
         _drawExportGraphPaper(canvas, size);
-        print('EXPORT: Drew graph paper');
         break;
       case BackgroundType.linedNotebook:
         _drawExportLinedNotebook(canvas, size);
-        print('EXPORT: Drew lined notebook');
         break;
       case BackgroundType.networkImage:
         if (_backgroundImage != null) {
-          print('EXPORT: Drawing network image ${_backgroundImage!.width}x${_backgroundImage!.height} into ${size.width}x${size.height}');
-          
           // First, fill the background with white to ensure no transparency
           canvas.drawRect(rect, Paint()..color = Colors.white);
-          print('EXPORT: Drew white background base');
           
           try {
             // Use the EXACT same scaling logic as the display CustomPainter
@@ -525,8 +454,6 @@ class EnhancedImagePainterController extends ChangeNotifier {
             final offsetX = (canvasWidth - scaledWidth) / 2;
             final offsetY = (canvasHeight - scaledHeight) / 2;
             
-            print('EXPORT: Image scaling - original: ${imageWidth}x${imageHeight}, scale: $scale, final: ${scaledWidth}x${scaledHeight}, offset: ($offsetX, $offsetY)');
-            
             // Draw the image with proper scaling and centering (same as display)
             final destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
             final srcRect = Rect.fromLTWH(0, 0, imageWidth, imageHeight);
@@ -542,24 +469,19 @@ class EnhancedImagePainterController extends ChangeNotifier {
               destRect,
               imagePaint,
             );
-            print('EXPORT: Network image drawn successfully to rect: $destRect');
             
           } catch (e) {
-            print('EXPORT: Error drawing network image: $e');
             // Fallback to colored background
             canvas.drawRect(rect, Paint()..color = Colors.lightBlue);
-            print('EXPORT: Drew fallback light blue background');
           }
           
         } else {
-          print('EXPORT: Network image is null, drawing white background');
           canvas.drawRect(rect, Paint()..color = Colors.white);
         }
         break;
       case BackgroundType.none:
       default:
         canvas.drawRect(rect, Paint()..color = Colors.white);
-        print('EXPORT: Drew default white background');
         break;
     }
   }
@@ -597,8 +519,6 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   void _drawExportPaintInfo(Canvas canvas, PaintInfo info) {
-    print('EXPORT: _drawExportPaintInfo called for ${info.mode}');
-    
     final paint = Paint()
       ..color = info.color
       ..strokeWidth = info.strokeWidth
@@ -608,23 +528,18 @@ class EnhancedImagePainterController extends ChangeNotifier {
       ..isAntiAlias = true
       ..blendMode = BlendMode.srcOver;
 
-    print('EXPORT: Paint settings - color: ${info.color}, strokeWidth: ${info.strokeWidth}, style: ${info.fill ? 'fill' : 'stroke'}');
-
     switch (info.mode) {
       case PaintMode.freeStyle:
-        print('EXPORT: Drawing freeStyle with ${info.offsets.length} offsets');
         _drawExportFreeStyle(canvas, info.offsets, paint);
         break;
       case PaintMode.line:
         if (info.offsets.length >= 2) {
-          print('EXPORT: Drawing line from ${info.offsets[0]} to ${info.offsets[1]}');
           canvas.drawLine(info.offsets[0]!, info.offsets[1]!, paint);
         }
         break;
       case PaintMode.rect:
         if (info.offsets.length >= 2) {
           final rect = Rect.fromPoints(info.offsets[0]!, info.offsets[1]!);
-          print('EXPORT: Drawing rect $rect');
           canvas.drawRect(rect, paint);
         }
         break;
@@ -632,38 +547,31 @@ class EnhancedImagePainterController extends ChangeNotifier {
         if (info.offsets.length >= 2) {
           final center = info.offsets[0]!;
           final radius = (info.offsets[1]! - center).distance;
-          print('EXPORT: Drawing circle at $center with radius $radius');
           canvas.drawCircle(center, radius, paint);
         }
         break;
       case PaintMode.text:
         if (info.text != null && info.offsets.isNotEmpty) {
-          print('EXPORT: Drawing text "${info.text}" at ${info.offsets[0]}');
           _drawExportText(canvas, info.text!, info.offsets[0]!, info.color, info.strokeWidth);
         }
         break;
       case PaintMode.arrow:
         if (info.offsets.length >= 2) {
-          print('EXPORT: Drawing arrow from ${info.offsets[0]} to ${info.offsets[1]}');
           _drawExportArrow(canvas, info.offsets[0]!, info.offsets[1]!, paint);
         }
         break;
       case PaintMode.dashedLine:
         if (info.offsets.length >= 2) {
-          print('EXPORT: Drawing dashed line from ${info.offsets[0]} to ${info.offsets[1]}');
           _drawExportDashedLine(canvas, info.offsets[0]!, info.offsets[1]!, paint);
         }
         break;
       default:
-        print('EXPORT: Unknown paint mode: ${info.mode}');
         break;
     }
   }
 
   void _drawExportFreeStyle(Canvas canvas, List<Offset?> offsets, Paint paint) {
-    print('EXPORT: _drawExportFreeStyle called with ${offsets.length} offsets');
     if (offsets.isEmpty) {
-      print('EXPORT: FreeStyle - no offsets to draw');
       return;
     }
     
@@ -696,14 +604,12 @@ class EnhancedImagePainterController extends ChangeNotifier {
       }
     }
     
-    print('EXPORT: FreeStyle - drawing path with $validPoints valid points');
     canvas.drawPath(path, paint);
   }
 
   void _drawExportText(Canvas canvas, String text, Offset offset, Color color, double strokeWidth) {
     // Use the same font size calculation as the display (strokeWidth * 4)
     final fontSize = strokeWidth * 4.0;
-    print('EXPORT: Drawing text "$text" at $offset with fontSize $fontSize (from strokeWidth $strokeWidth)');
     
     final textPainter = TextPainter(
       text: TextSpan(
@@ -719,7 +625,6 @@ class EnhancedImagePainterController extends ChangeNotifier {
     );
     textPainter.layout();
     
-    print('EXPORT: Text painter size: ${textPainter.width}x${textPainter.height}');
     textPainter.paint(canvas, offset);
     textPainter.dispose();
   }
@@ -797,19 +702,10 @@ class EnhancedImageCustomPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Only log paint start in development mode, not every single paint call
-    if (_paintCallCount < 5) {
-      print('PAINT: Starting paint ${size.width}x${size.height}');
-      _paintCallCount++;
-    }
-    
     // Draw background first
     _drawBackground(canvas, size);
     
     // Draw all completed strokes
-    if (_paintCallCount < 5) {
-      print('PAINT: Drawing ${controller.paintHistory.length} paint items');
-    }
     for (final info in controller.paintHistory) {
       _drawPaintInfo(canvas, info);
     }
@@ -822,16 +718,8 @@ class EnhancedImageCustomPainter extends CustomPainter {
     controller._clearRepaintFlag();
   }
 
-  static int _paintCallCount = 0;
-
   void _drawBackground(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    
-    // Only log background drawing occasionally to avoid spam
-    _paintCallCount++;
-    if (_paintCallCount % 20 == 1) {
-      print('PAINT: Drawing background ${controller.backgroundType} (call #$_paintCallCount)');
-    }
     
     switch (controller.backgroundType) {
       case BackgroundType.blankCanvas:
@@ -845,11 +733,6 @@ class EnhancedImageCustomPainter extends CustomPainter {
         break;
       case BackgroundType.networkImage:
         if (controller.backgroundImage != null) {
-          // Only log network image drawing occasionally to avoid spam
-          if (_paintCallCount % 20 == 1) {
-            print('PAINT: Drawing network image ${controller.backgroundImage!.width}x${controller.backgroundImage!.height}');
-          }
-          
           // First, fill the background with white to ensure no transparency
           canvas.drawRect(rect, Paint()..color = Colors.white);
           
@@ -889,19 +772,12 @@ class EnhancedImageCustomPainter extends CustomPainter {
               imagePaint,
             );
             
-            // Only log success occasionally to avoid spam
-            if (_paintCallCount % 20 == 1) {
-              print('PAINT: Network image drawn successfully');
-            }
-            
           } catch (e) {
-            print('PAINT: Error drawing network image: $e');
             // Fallback to colored background
             canvas.drawRect(rect, Paint()..color = Colors.lightBlue);
           }
           
         } else {
-          print('PAINT: Network image is null, drawing white background');
           canvas.drawRect(rect, Paint()..color = Colors.white);
         }
         break;
@@ -976,7 +852,6 @@ class EnhancedImageCustomPainter extends CustomPainter {
         break;
       case PaintMode.text:
         if (info.text != null && info.offsets.isNotEmpty) {
-          print('PAINT: Drawing text "${info.text}" at ${info.offsets[0]}');
           _drawText(canvas, info.text!, info.offsets[0]!, info.color, info.strokeWidth);
         }
         break;
