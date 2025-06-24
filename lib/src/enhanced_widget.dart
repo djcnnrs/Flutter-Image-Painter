@@ -156,12 +156,17 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       _actualHeight = widget.height;
     } else {
       // Network image
+      print('SETUP: Loading network image: $bgImage');
       try {
-        await _controller.loadBackgroundImage(bgImage);
+        // Set the background type and URL first
         _controller.setBackgroundType(BackgroundType.networkImage);
         _controller.setBackgroundImageUrl(bgImage);
         
+        // Then load the image
+        await _controller.loadBackgroundImage(bgImage);
+        
         if (_controller.backgroundImage != null) {
+          print('SETUP: Network image loaded successfully: ${_controller.backgroundImage!.width}x${_controller.backgroundImage!.height}');
           // Calculate scaled dimensions to fit within provided canvas size
           final imageWidth = _controller.backgroundImage!.width.toDouble();
           final imageHeight = _controller.backgroundImage!.height.toDouble();
@@ -176,11 +181,14 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
           // Set scaled dimensions
           _actualWidth = imageWidth * scale;
           _actualHeight = imageHeight * scale;
+          print('SETUP: Calculated display size: ${_actualWidth}x${_actualHeight}');
         } else {
+          print('SETUP: Failed to load network image, using default size');
           _actualWidth = widget.width;
           _actualHeight = widget.height;
         }
       } catch (e) {
+        print('SETUP: Error loading network image: $e');
         _controller.setBackgroundType(BackgroundType.blankCanvas);
         _actualWidth = widget.width;
         _actualHeight = widget.height;
@@ -292,34 +300,35 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   /// Transform screen coordinates to canvas coordinates
   /// This accounts for any pan/zoom transformations that might be applied
   Offset _transformToCanvasCoordinates(Offset screenPosition) {
+    print('TRANSFORM: Screen position: $screenPosition');
+    
     if (_controller.mode == PaintMode.none) {
       // In pan/zoom mode, InteractiveViewer handles coordinate transformation internally
-      // We should not apply additional transformation here
+      // We should not apply additional transformation here - the coordinates are already correct
+      print('TRANSFORM: Pan/zoom mode - using screen position directly: $screenPosition');
       return screenPosition;
     }
     
-    // In drawing modes, we need to account for the current transformation state
-    // Use the current transformation from the controller, not saved state
-    final currentTransform = _transformationController.value;
-    
-    // If we have any transformation applied (scale != 1.0 or translation != 0)
-    if (currentTransform.getMaxScaleOnAxis() != 1.0 || 
-        currentTransform.getTranslation().x != 0.0 || 
-        currentTransform.getTranslation().y != 0.0) {
-      
+    // In drawing modes, we need to account for any saved transformation from pan/zoom
+    if (_savedTransformation != null) {
       try {
         // Apply inverse transformation to get true canvas coordinates
-        final Matrix4 inverse = Matrix4.inverted(currentTransform);
+        final Matrix4 inverse = Matrix4.inverted(_savedTransformation!);
         final vector.Vector3 transformed = inverse.transform3(
           vector.Vector3(screenPosition.dx, screenPosition.dy, 0)
         );
-        return Offset(transformed.x, transformed.y);
+        final canvasPos = Offset(transformed.x, transformed.y);
+        print('TRANSFORM: Applied inverse transform - screen: $screenPosition -> canvas: $canvasPos');
+        return canvasPos;
       } catch (e) {
         print('ERROR: Failed to transform coordinates: $e');
+        print('TRANSFORM: Falling back to screen position: $screenPosition');
         return screenPosition;
       }
     }
     
+    // No transformation needed
+    print('TRANSFORM: No transformation - using screen position: $screenPosition');
     return screenPosition;
   }
 
@@ -359,22 +368,8 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        // Improved transformation state management
-        if (_controller.mode == PaintMode.none) {
-          // Entering pan/zoom mode - save current transformation if not already saved
-          if (_savedTransformation == null) {
-            _savedTransformation = Matrix4.copy(_transformationController.value);
-            print('TRANSFORM: Saved transformation for pan/zoom mode');
-          }
-        } else {
-          // In drawing mode - restore saved transformation if available
-          if (_savedTransformation != null) {
-            _transformationController.value = Matrix4.copy(_savedTransformation!);
-            print('TRANSFORM: Restored transformation for drawing mode');
-            // Don't clear savedTransformation here - keep it for mode switches
-          }
-        }
-
+        print('CANVAS: Building canvas in mode ${_controller.mode}');
+        
         final canvasWidget = Container(
           width: _getCanvasWidth(),
           height: _getCanvasHeight(),
@@ -411,6 +406,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
 
         // In pan/zoom mode, wrap with InteractiveViewer
         if (_controller.mode == PaintMode.none) {
+          print('CANVAS: Using InteractiveViewer for pan/zoom mode');
           return InteractiveViewer(
             transformationController: _transformationController,
             minScale: 0.5,
@@ -419,203 +415,220 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
             panEnabled: true,
             scaleEnabled: true,
             onInteractionStart: (details) {
-              // Track transformation changes
               _currentScale = _transformationController.value.getMaxScaleOnAxis();
               final translation = _transformationController.value.getTranslation();
               _currentPanOffset = Offset(translation.x, translation.y);
               print('TRANSFORM: Pan/zoom started - scale: $_currentScale, pan: $_currentPanOffset');
             },
             onInteractionUpdate: (details) {
-              // Track transformation changes
               _currentScale = _transformationController.value.getMaxScaleOnAxis();
               final translation = _transformationController.value.getTranslation();
               _currentPanOffset = Offset(translation.x, translation.y);
-              
-              // Only update saved transformation if it's significantly different
-              _savedTransformation = Matrix4.copy(_transformationController.value);
             },
             onInteractionEnd: (details) {
-              // Update saved transformation when interaction ends
+              // Save the transformation when pan/zoom interaction ends
               _savedTransformation = Matrix4.copy(_transformationController.value);
-              print('TRANSFORM: Pan/zoom ended - scale: $_currentScale, pan: $_currentPanOffset');
+              print('TRANSFORM: Pan/zoom ended - saved transformation');
+              _logTransformationState();
             },
             child: canvasWidget,
           );
         } else {
-          // In drawing modes, wrap with GestureDetector for drawing interactions
-          return GestureDetector(
-            onTapDown: (details) {
-              final offset = _transformToCanvasCoordinates(details.localPosition);
-              
-              // Check if the tap is within canvas bounds
-              if (!_isPositionInCanvasBounds(offset)) {
-                return;
-              }
-              
-              // Always check for text first (in any mode)
-              final textIndex = _findTextAtPosition(offset);
-              
-              // Handle text mode
-              if (_controller.mode == PaintMode.text) {
+          print('CANVAS: Using GestureDetector for drawing mode ${_controller.mode}');
+          // In drawing modes, ensure transformation is applied if we have saved state
+          if (_savedTransformation != null && 
+              (_transformationController.value != _savedTransformation)) {
+            print('CANVAS: Restoring saved transformation for drawing mode');
+            _transformationController.value = Matrix4.copy(_savedTransformation!);
+          }
+          
+          // Always wrap drawing modes with both transformation and gesture detection
+          return Transform(
+            transform: _savedTransformation ?? Matrix4.identity(),
+            child: GestureDetector(
+              onTapDown: (details) {
+                final offset = _transformToCanvasCoordinates(details.localPosition);
+                print('GESTURE: Tap down at screen: ${details.localPosition}, canvas: $offset');
+                
+                // Check if the tap is within canvas bounds
+                if (!_isPositionInCanvasBounds(offset)) {
+                  print('GESTURE: Tap outside canvas bounds');
+                  return;
+                }
+                
+                // Always check for text first (in any mode)
+                final textIndex = _findTextAtPosition(offset);
+                
+                // Handle text mode
+                if (_controller.mode == PaintMode.text) {
+                  if (textIndex != null) {
+                    // Clicking on existing text - prepare for potential drag or edit
+                    _dragStartPosition = offset;
+                    _draggingTextIndex = textIndex;
+                    print('GESTURE: Selected text for potential drag/edit at index $textIndex');
+                    return;
+                  } else {
+                    // Clicking on empty space - add new text
+                    _pendingTextPosition = offset;
+                    print('GESTURE: Adding new text at $offset');
+                    _openTextDialog();
+                    return;
+                  }
+                }
+                
+                // Handle non-text modes
                 if (textIndex != null) {
-                  // Clicking on existing text - prepare for potential drag or edit
+                  // Clicking on text in non-text mode - prepare for potential drag
                   _dragStartPosition = offset;
                   _draggingTextIndex = textIndex;
-                  return;
-                } else {
-                  // Clicking on empty space - add new text
-                  _pendingTextPosition = offset;
-                  _openTextDialog();
+                  print('GESTURE: Selected text for drag in non-text mode');
+                  // Don't start drawing gestures when clicking on text
                   return;
                 }
-              }
-              
-              // Handle non-text modes
-              if (textIndex != null) {
-                // Clicking on text in non-text mode - prepare for potential drag
-                _dragStartPosition = offset;
-                _draggingTextIndex = textIndex;
-                // Don't start drawing gestures when clicking on text
-                return;
-              }
-              
-              // No text clicked - clear any text drag state
-              _draggingTextIndex = null;
-              _dragStartPosition = null;
-            },
-            onTapUp: (details) {
-              final offset = _transformToCanvasCoordinates(details.localPosition);
-              
-              // If we were potentially dragging text but didn't actually drag
-              if (_draggingTextIndex != null && !_isDraggingText) {
-                if (_controller.mode == PaintMode.text) {
-                  // In text mode, single tap on text opens edit dialog
-                  _editTextAtIndex(_draggingTextIndex!);
-                }
-                // Clear drag state
+                
+                // No text clicked - clear any text drag state
                 _draggingTextIndex = null;
                 _dragStartPosition = null;
-              }
-              
-              // Handle potential text editing (double-click detection) for all modes
-              _lastTapPosition = offset;
-              _lastTapTime = DateTime.now();
-              _handleTapForTextEditing();
-            },
-            onPanStart: (details) {
-              final offset = _transformToCanvasCoordinates(details.localPosition);
-              
-              // Check if the pan start is within canvas bounds
-              if (!_isPositionInCanvasBounds(offset)) {
-                return;
-              }
-              
-              // If we have a potential text drag, just mark that we're starting a pan
-              if (_draggingTextIndex != null && _dragStartPosition != null) {
-                // Don't set _isDraggingText yet - wait for onPanUpdate to detect actual movement
-                return;
-              }
-              
-              // Only allow drawing gestures if we're not potentially dragging text
-              if (_draggingTextIndex != null) {
-                // We're on text but starting a pan - wait to see if it's a drag
-                return;
-              }
-              
-              // Skip drawing gestures in text mode when not dragging text
-              if (_controller.mode == PaintMode.text) {
-                return;
-              }
-              
-              _controller.setStart(offset);
-              _controller.setInProgress(true);
-              
-              if (_controller.mode == PaintMode.freeStyle) {
-                _controller.addOffsets(offset);
-              } else {
-                // For shape modes, set the end position same as start initially for immediate preview
-                _controller.setEnd(offset);
-              }
-            },
-            onPanUpdate: (details) {
-              final offset = _transformToCanvasCoordinates(details.localPosition);
-              
-              // Always clamp the position to canvas bounds to prevent drawing outside
-              final clampedOffset = _clampPositionToCanvasBounds(offset);
-              
-              // Check if we should start dragging text (detect actual movement here)
-              if (_draggingTextIndex != null && !_isDraggingText && _dragStartPosition != null) {
-                final dragDistance = (_dragStartPosition! - clampedOffset).distance;
-                if (dragDistance > _dragThreshold) { // Threshold to differentiate tap from drag
-                  _isDraggingText = true;
+              },
+              onTapUp: (details) {
+                final offset = _transformToCanvasCoordinates(details.localPosition);
+                
+                // If we were potentially dragging text but didn't actually drag
+                if (_draggingTextIndex != null && !_isDraggingText) {
+                  if (_controller.mode == PaintMode.text) {
+                    // In text mode, single tap on text opens edit dialog
+                    _editTextAtIndex(_draggingTextIndex!);
+                  }
+                  // Clear drag state
+                  _draggingTextIndex = null;
+                  _dragStartPosition = null;
+                }
+                
+                // Handle potential text editing (double-click detection) for all modes
+                _lastTapPosition = offset;
+                _lastTapTime = DateTime.now();
+                _handleTapForTextEditing();
+              },
+              onPanStart: (details) {
+                final offset = _transformToCanvasCoordinates(details.localPosition);
+                print('GESTURE: Pan start at screen: ${details.localPosition}, canvas: $offset');
+                
+                // Check if the pan start is within canvas bounds
+                if (!_isPositionInCanvasBounds(offset)) {
+                  return;
+                }
+                
+                // If we have a potential text drag, just mark that we're starting a pan
+                if (_draggingTextIndex != null && _dragStartPosition != null) {
+                  // Don't set _isDraggingText yet - wait for onPanUpdate to detect actual movement
+                  return;
+                }
+                
+                // Only allow drawing gestures if we're not potentially dragging text
+                if (_draggingTextIndex != null) {
+                  // We're on text but starting a pan - wait to see if it's a drag
+                  return;
+                }
+                
+                // Skip drawing gestures in text mode when not dragging text
+                if (_controller.mode == PaintMode.text) {
+                  return;
+                }
+                
+                print('GESTURE: Starting drawing gesture');
+                _controller.setStart(offset);
+                _controller.setInProgress(true);
+                
+                if (_controller.mode == PaintMode.freeStyle) {
+                  _controller.addOffsets(offset);
+                } else {
+                  // For shape modes, set the end position same as start initially for immediate preview
+                  _controller.setEnd(offset);
+                }
+              },
+              onPanUpdate: (details) {
+                final offset = _transformToCanvasCoordinates(details.localPosition);
+                
+                // Always clamp the position to canvas bounds to prevent drawing outside
+                final clampedOffset = _clampPositionToCanvasBounds(offset);
+                
+                // Check if we should start dragging text (detect actual movement here)
+                if (_draggingTextIndex != null && !_isDraggingText && _dragStartPosition != null) {
+                  final dragDistance = (_dragStartPosition! - clampedOffset).distance;
+                  if (dragDistance > _dragThreshold) { // Threshold to differentiate tap from drag
+                    _isDraggingText = true;
+                    print('GESTURE: Started dragging text');
+                    setState(() {
+                      _repositionPreviewPosition = clampedOffset;
+                    });
+                    return;
+                  }
+                }
+                
+                // Handle ongoing text dragging
+                if (_isDraggingText && _draggingTextIndex != null) {
                   setState(() {
                     _repositionPreviewPosition = clampedOffset;
                   });
                   return;
                 }
-              }
-              
-              // Handle ongoing text dragging
-              if (_isDraggingText && _draggingTextIndex != null) {
-                setState(() {
-                  _repositionPreviewPosition = clampedOffset;
-                });
-                return;
-              }
-              
-              // Don't update drawing if we're potentially dragging text
-              if (_draggingTextIndex != null) {
-                return;
-              }
-              
-              // Skip other pan updates in text mode 
-              if (_controller.mode == PaintMode.text) {
-                return;
-              }
-              
-              // Ensure we're still in progress
-              _controller.setInProgress(true);
-              
-              // Always update the end position for real-time preview (using clamped position)
-              _controller.setEnd(clampedOffset);
-              
-              if (_controller.mode == PaintMode.freeStyle) {
-                _controller.addOffsets(clampedOffset);
-              }
-            },
-            onPanEnd: (details) {
-              // Handle text dragging completion
-              if (_isDraggingText && _draggingTextIndex != null && _repositionPreviewPosition != null) {
-                // Clamp the final position to canvas bounds
-                final clampedPosition = _clampPositionToCanvasBounds(_repositionPreviewPosition!);
-                _updateTextPosition(clampedPosition);
+                
+                // Don't update drawing if we're potentially dragging text
+                if (_draggingTextIndex != null) {
+                  return;
+                }
+                
+                // Skip other pan updates in text mode 
+                if (_controller.mode == PaintMode.text) {
+                  return;
+                }
+                
+                // Ensure we're still in progress
+                _controller.setInProgress(true);
+                
+                // Always update the end position for real-time preview (using clamped position)
+                _controller.setEnd(clampedOffset);
+                
+                if (_controller.mode == PaintMode.freeStyle) {
+                  _controller.addOffsets(clampedOffset);
+                }
+              },
+              onPanEnd: (details) {
+                print('GESTURE: Pan end');
+                
+                // Handle text dragging completion
+                if (_isDraggingText && _draggingTextIndex != null && _repositionPreviewPosition != null) {
+                  // Clamp the final position to canvas bounds
+                  final clampedPosition = _clampPositionToCanvasBounds(_repositionPreviewPosition!);
+                  _updateTextPosition(clampedPosition);
+                  _isDraggingText = false;
+                  _draggingTextIndex = null;
+                  _dragStartPosition = null;
+                  _repositionPreviewPosition = null;
+                  return;
+                }
+                
+                // Clear any potential drag state
                 _isDraggingText = false;
                 _draggingTextIndex = null;
                 _dragStartPosition = null;
                 _repositionPreviewPosition = null;
-                return;
-              }
-              
-              // Clear any potential drag state
-              _isDraggingText = false;
-              _draggingTextIndex = null;
-              _dragStartPosition = null;
-              _repositionPreviewPosition = null;
-              
-              _controller.setInProgress(false);
-              
-              if (_controller.start != null && _controller.end != null) {
-                if (_controller.mode == PaintMode.freeStyle) {
-                  _controller.addOffsets(null); // End stroke marker
-                  _addFreeStylePoints();
-                  _controller.offsets.clear();
-                } else if (_controller.mode != PaintMode.text) {
-                  _addEndPoints();
+                
+                _controller.setInProgress(false);
+                
+                if (_controller.start != null && _controller.end != null) {
+                  if (_controller.mode == PaintMode.freeStyle) {
+                    _controller.addOffsets(null); // End stroke marker
+                    _addFreeStylePoints();
+                    _controller.offsets.clear();
+                  } else if (_controller.mode != PaintMode.text) {
+                    _addEndPoints();
+                  }
                 }
-              }
-              _controller.resetStartAndEnd();
-            },
-            child: canvasWidget,
+                _controller.resetStartAndEnd();
+              },
+              child: canvasWidget,
+            ),
           );
         }
       },

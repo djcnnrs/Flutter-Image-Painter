@@ -136,6 +136,8 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   void addPaintInfo(PaintInfo info) {
+    print('ADD_PAINT: Adding ${info.mode} with ${info.offsets.length} offsets, text: "${info.text}"');
+    
     // Optimize stroke points for freeStyle to prevent memory issues
     PaintInfo optimizedInfo = info;
     if (info.mode == PaintMode.freeStyle && info.offsets.length > 100) {
@@ -147,11 +149,17 @@ class EnhancedImagePainterController extends ChangeNotifier {
         fill: info.fill,
         text: info.text,
       );
+      print('ADD_PAINT: Optimized freeStyle from ${info.offsets.length} to ${optimizedInfo.offsets.length} points');
     }
     
     _paintHistory.add(optimizedInfo);
+    print('ADD_PAINT: Paint history now has ${_paintHistory.length} items');
+    
     _markForRepaint();
     notifyListeners();
+    
+    // Debug: Print current paint history
+    debugPaintHistory();
   }
 
   /// Optimizes stroke points by removing redundant points while maintaining visual quality
@@ -380,49 +388,48 @@ class EnhancedImagePainterController extends ChangeNotifier {
   }
 
   Future<void> loadBackgroundImage(String url) async {
+    print('LOAD: Request to load background image: $url');
+    print('LOAD: Current state - URL: $_backgroundImageUrl, Image loaded: ${_backgroundImage != null}');
+    
     // Prevent reloading the same image
     if (_backgroundImageUrl == url && _backgroundImage != null) {
-      print('Background image already loaded for URL: $url');
-      return;
-    }
-    
-    // Don't reload if we're just switching modes but keeping the same URL
-    if (_backgroundImageUrl == url && _backgroundImage != null) {
-      print('Background image already available for URL: $url');
+      print('LOAD: Background image already loaded for URL: $url');
       return;
     }
     
     try {
-      print('Loading background image: $url');
+      print('LOAD: Starting to load background image: $url');
       final completer = Completer<ui.Image>();
       final img = NetworkImage(url);
       
       img.resolve(const ImageConfiguration()).addListener(
         ImageStreamListener((info, _) {
+          print('LOAD: Image loaded successfully from network');
           completer.complete(info.image);
         }, onError: (error, stackTrace) {
-          print('Image loading error: $error');
+          print('LOAD: Image loading error: $error');
           completer.completeError(error);
         })
       );
       
       final loadedImage = await completer.future;
       
-      // Only update if the image actually changed to prevent unnecessary rebuilds
-      if (_backgroundImage != loadedImage) {
-        _backgroundImage = loadedImage;
-        _backgroundImageUrl = url; // Update URL after successful load
-        print('Background image loaded: ${_backgroundImage!.width}x${_backgroundImage!.height}');
-        // Only notify listeners if image actually changed
-        notifyListeners();
-      } else {
-        print('Background image unchanged - no notification needed');
-      }
+      // Always update the image and URL, even if it seems the same
+      // because the ui.Image object might be different
+      _backgroundImage = loadedImage;
+      _backgroundImageUrl = url;
+      print('LOAD: Background image loaded successfully: ${_backgroundImage!.width}x${_backgroundImage!.height}');
+      
+      // Always notify listeners when we successfully load an image
+      notifyListeners();
+      print('LOAD: Notified listeners of image change');
+      
     } catch (e) {
-      print('Failed to load background image: $e');
+      print('LOAD: Failed to load background image: $e');
       // Reset state on failure
       _backgroundImage = null;
       _backgroundImageUrl = null;
+      notifyListeners(); // Notify even on failure so UI can handle it
     }
   }
 
