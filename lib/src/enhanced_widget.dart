@@ -83,6 +83,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   int? _draggingTextIndex;
   Offset? _dragStartPosition;
   Offset? _repositionPreviewPosition; // Used for drag preview
+  int _textDragUpdateCount = 0; // Counter for throttling text drag updates
 
   // Pan/Zoom functionality
   TransformationController _transformationController = TransformationController();
@@ -367,87 +368,83 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
   }
 
   Widget _buildCanvas() {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        print('CANVAS: Building canvas in mode ${_controller.mode}');
-        
-        final canvasWidget = Container(
-          width: _getCanvasWidth(),
-          height: _getCanvasHeight(),
-          color: Colors.white,
-          child: Stack(
-            children: [
-              CustomPaint(
-                size: Size(_getCanvasWidth(), _getCanvasHeight()),
-                painter: EnhancedImageCustomPainter(
-                  controller: _controller,
-                  size: Size(_getCanvasWidth(), _getCanvasHeight()),
-                ),
-              ),
-              // Show text dragging preview
-              if (_isDraggingText && _repositionPreviewPosition != null && _draggingTextIndex != null)
-                Positioned(
-                  left: _repositionPreviewPosition!.dx,
-                  top: _repositionPreviewPosition!.dy,
-                  child: Opacity(
-                    opacity: 0.7,
-                    child: Text(
-                      _getTextBeingDragged(),
-                      style: TextStyle(
-                        color: _controller.paintHistory[_draggingTextIndex!].color,
-                        fontSize: _getTextFontSize(_controller.paintHistory[_draggingTextIndex!].strokeWidth),
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
+    // Remove AnimatedBuilder to prevent toolbar hovers from causing canvas repaints
+    final canvasWidget = Container(
+      width: _getCanvasWidth(),
+      height: _getCanvasHeight(),
+      color: Colors.white,
+      child: Stack(
+        children: [
+          CustomPaint(
+            size: Size(_getCanvasWidth(), _getCanvasHeight()),
+            painter: EnhancedImageCustomPainter(
+              controller: _controller,
+              size: Size(_getCanvasWidth(), _getCanvasHeight()),
+            ),
+          ),
+          // Show text dragging preview
+          if (_isDraggingText && _repositionPreviewPosition != null && _draggingTextIndex != null)
+            Positioned(
+              left: _repositionPreviewPosition!.dx,
+              top: _repositionPreviewPosition!.dy,
+              child: Opacity(
+                opacity: 0.7,
+                child: Text(
+                  _getTextBeingDragged(),
+                  style: TextStyle(
+                    color: _controller.paintHistory[_draggingTextIndex!].color,
+                    fontSize: _getTextFontSize(_controller.paintHistory[_draggingTextIndex!].strokeWidth),
+                    decoration: TextDecoration.none,
                   ),
                 ),
-            ],
-          ),
-        );
+              ),
+            ),
+        ],
+      ),
+    );
 
-        // In pan/zoom mode, wrap with InteractiveViewer
-        if (_controller.mode == PaintMode.none) {
-          print('CANVAS: Using InteractiveViewer for pan/zoom mode');
-          return InteractiveViewer(
-            transformationController: _transformationController,
-            minScale: 0.5,
-            maxScale: 4.0,
-            constrained: false,
-            panEnabled: true,
-            scaleEnabled: true,
-            onInteractionStart: (details) {
-              _currentScale = _transformationController.value.getMaxScaleOnAxis();
-              final translation = _transformationController.value.getTranslation();
-              _currentPanOffset = Offset(translation.x, translation.y);
-              print('TRANSFORM: Pan/zoom started - scale: $_currentScale, pan: $_currentPanOffset');
-            },
-            onInteractionUpdate: (details) {
-              _currentScale = _transformationController.value.getMaxScaleOnAxis();
-              final translation = _transformationController.value.getTranslation();
-              _currentPanOffset = Offset(translation.x, translation.y);
-            },
-            onInteractionEnd: (details) {
-              // Save the transformation when pan/zoom interaction ends
-              _savedTransformation = Matrix4.copy(_transformationController.value);
-              print('TRANSFORM: Pan/zoom ended - saved transformation');
-              _logTransformationState();
-            },
-            child: canvasWidget,
-          );
-        } else {
-          print('CANVAS: Using GestureDetector for drawing mode ${_controller.mode}');
-          // In drawing modes, ensure transformation is applied if we have saved state
-          if (_savedTransformation != null && 
-              (_transformationController.value != _savedTransformation)) {
-            print('CANVAS: Restoring saved transformation for drawing mode');
-            _transformationController.value = Matrix4.copy(_savedTransformation!);
-          }
-          
-          // Always wrap drawing modes with both transformation and gesture detection
-          return Transform(
-            transform: _savedTransformation ?? Matrix4.identity(),
-            child: GestureDetector(
+    // In pan/zoom mode, wrap with InteractiveViewer
+    if (_controller.mode == PaintMode.none) {
+      print('CANVAS: Using InteractiveViewer for pan/zoom mode');
+      return InteractiveViewer(
+        transformationController: _transformationController,
+        minScale: 0.5,
+        maxScale: 4.0,
+        constrained: false,
+        panEnabled: true,
+        scaleEnabled: true,
+        onInteractionStart: (details) {
+          _currentScale = _transformationController.value.getMaxScaleOnAxis();
+          final translation = _transformationController.value.getTranslation();
+          _currentPanOffset = Offset(translation.x, translation.y);
+          print('TRANSFORM: Pan/zoom started - scale: $_currentScale, pan: $_currentPanOffset');
+        },
+        onInteractionUpdate: (details) {
+          _currentScale = _transformationController.value.getMaxScaleOnAxis();
+          final translation = _transformationController.value.getTranslation();
+          _currentPanOffset = Offset(translation.x, translation.y);
+        },
+        onInteractionEnd: (details) {
+          // Save the transformation when pan/zoom interaction ends
+          _savedTransformation = Matrix4.copy(_transformationController.value);
+          print('TRANSFORM: Pan/zoom ended - saved transformation');
+          _logTransformationState();
+        },
+        child: canvasWidget,
+      );
+    } else {
+      print('CANVAS: Using GestureDetector for drawing mode ${_controller.mode}');
+      // In drawing modes, ensure transformation is applied if we have saved state
+      if (_savedTransformation != null && 
+          (_transformationController.value != _savedTransformation)) {
+        print('CANVAS: Restoring saved transformation for drawing mode');
+        _transformationController.value = Matrix4.copy(_savedTransformation!);
+      }
+      
+      // Always wrap drawing modes with both transformation and gesture detection
+      return Transform(
+        transform: _savedTransformation ?? Matrix4.identity(),
+        child: GestureDetector(
               onTapDown: (details) {
                 final offset = _transformToCanvasCoordinates(details.localPosition);
                 print('GESTURE: Tap down at screen: ${details.localPosition}, canvas: $offset');
@@ -559,19 +556,23 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                   final dragDistance = (_dragStartPosition! - clampedOffset).distance;
                   if (dragDistance > _dragThreshold) { // Threshold to differentiate tap from drag
                     _isDraggingText = true;
+                    _repositionPreviewPosition = clampedOffset;
                     print('GESTURE: Started dragging text');
-                    setState(() {
-                      _repositionPreviewPosition = clampedOffset;
-                    });
+                    setState(() {}); // Single setState call when starting drag
                     return;
                   }
                 }
                 
                 // Handle ongoing text dragging
                 if (_isDraggingText && _draggingTextIndex != null) {
-                  setState(() {
-                    _repositionPreviewPosition = clampedOffset;
-                  });
+                  // Throttle setState calls during text dragging to reduce repaints
+                  _repositionPreviewPosition = clampedOffset;
+                  
+                  // Only call setState every 3rd update to reduce repaints
+                  _textDragUpdateCount++;
+                  if (_textDragUpdateCount % 3 == 0) {
+                    setState(() {});
+                  }
                   return;
                 }
                 
@@ -629,8 +630,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
                 }
                 _controller.resetStartAndEnd();
               },
-              child: canvasWidget,
-            ),
+            child: canvasWidget,
           );
         }
       },
@@ -642,58 +642,65 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
       height: _toolbarHeight,
       padding: const EdgeInsets.all(4),
       color: widget.config.toolbarBackgroundColor ?? Colors.grey[800], // Darker background
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildModeSelector(),
-              if (widget.config.showColorTool) _buildColorSelector(),
-              if (widget.config.showStrokeTool) _buildStrokeSelector(),
-              if (widget.config.showFillOption && _controller.canFill()) ...[
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Checkbox(
-                      value: _controller.fill,
-                      onChanged: (val) => _controller.setFill(val ?? false),
-                      fillColor: MaterialStateProperty.resolveWith((states) {
-                        if (states.contains(MaterialState.selected)) {
-                          return Colors.blue;
-                        }
-                        return Colors.white;
-                      }),
-                    ),
-                    Text('Fill', style: TextStyle(color: Colors.white)), // White text for dark background
-                  ],
-                ),
-              ],
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.undo, color: Colors.white),
-                onPressed: undoLastAction,
-                tooltip: 'Undo',
-              ),
-              IconButton(
-                icon: const Icon(Icons.clear, color: Colors.white),
-                onPressed: clearCanvas,
-                tooltip: 'Clear',
-              ),
-              IconButton(
-                icon: Icon(Icons.save, color: _controller.paintHistory.isEmpty ? Colors.grey : Colors.white),
-                onPressed: _controller.paintHistory.isEmpty ? null : () async {
-                  if (widget.config.onSave != null) {
-                    await widget.config.onSave!();
-                  }
-                },
-                tooltip: _controller.paintHistory.isEmpty ? 'Canvas is Empty' : 'Save',
-              ),
-            ],
-          );
-        },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildModeSelector(),
+          if (widget.config.showColorTool) _buildColorSelector(),
+          if (widget.config.showStrokeTool) _buildStrokeSelector(),
+          if (widget.config.showFillOption) _buildFillOption(),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.undo, color: Colors.white),
+            onPressed: undoLastAction,
+            tooltip: 'Undo',
+          ),
+          IconButton(
+            icon: const Icon(Icons.clear, color: Colors.white),
+            onPressed: clearCanvas,
+            tooltip: 'Clear',
+          ),
+          _buildSaveButton(),
+        ],
       ),
     );
+  }
+
+  Widget _buildFillOption() {
+    // Removed AnimatedBuilder to prevent unnecessary rebuilds
+    if (!_controller.canFill()) return SizedBox.shrink();
+    
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Checkbox(
+          value: _controller.fill,
+          onChanged: (val) => _controller.setFill(val ?? false),
+          fillColor: MaterialStateProperty.resolveWith((states) {
+            if (states.contains(MaterialState.selected)) {
+              return Colors.blue;
+            }
+            return Colors.white;
+          }),
+        ),
+        Text('Fill', style: TextStyle(color: Colors.white)), // White text for dark background
+      ],
+    );
+  }
+
+  Widget _buildSaveButton() {
+    // Removed AnimatedBuilder to prevent unnecessary rebuilds
+    final isEmpty = _controller.paintHistory.isEmpty;
+    return IconButton(
+      icon: Icon(Icons.save, color: isEmpty ? Colors.grey : Colors.white),
+      onPressed: isEmpty ? null : () async {
+        if (widget.config.onSave != null) {
+          await widget.config.onSave!();
+        }
+      },
+      tooltip: isEmpty ? 'Canvas is Empty' : 'Save',
+    );
+  }
   }
 
   Widget _buildModeSelector() {
@@ -1065,6 +1072,7 @@ class EnhancedImagePainterState extends State<EnhancedImagePainter> {
     _draggingTextIndex = null;
     _dragStartPosition = null;
     _repositionPreviewPosition = null;
+    _textDragUpdateCount = 0; // Reset counter
   }
 
   IconData _getModeIcon(PaintMode mode) {
