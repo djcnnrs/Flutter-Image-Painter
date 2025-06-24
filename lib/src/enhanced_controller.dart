@@ -162,6 +162,15 @@ class EnhancedImagePainterController extends ChangeNotifier {
     debugPaintHistory();
   }
 
+  /// Debug method to log paint history
+  void debugPaintHistory() {
+    print('PAINT HISTORY DEBUG: ${_paintHistory.length} items');
+    for (int i = 0; i < _paintHistory.length; i++) {
+      final info = _paintHistory[i];
+      print('  [$i] ${info.mode} - color: ${info.color}, stroke: ${info.strokeWidth}, offsets: ${info.offsets.length}, text: "${info.text}"');
+    }
+  }
+
   /// Optimizes stroke points by removing redundant points while maintaining visual quality
   List<Offset?> _optimizeStrokePoints(List<Offset?> points) {
     if (points.length <= 100) return points;
